@@ -1,0 +1,47 @@
+{
+  "destination": "桂林与阳朔",
+  "travel_style": "relaxed",
+  "notes": [
+    {
+      "title": "桂林阳朔公共交通慢游",
+      "url": "https://www.xiaohongshu.com/explore/example-1",
+      "published_at": "2026-11-20",
+      "checked_at": "2027-04-01T19:00:00+08:00",
+      "place_evidence": [
+        {
+          "name": "阳朔西街与漓江步道",
+          "features": [
+            "喀斯特山水与滨江步道",
+            "适合步行体验的老街"
+          ],
+          "why_visit": [
+            "适合作为抵达后的低强度活动"
+          ],
+          "suggested_duration_minutes": 240,
+          "best_time": "抵达当日下午或傍晚",
+          "physical_load": "低",
+          "caveats": [
+            "节假日晚间人流较大"
+          ]
+        },
+        {
+          "name": "龙脊梯田",
+          "features": [
+            "层叠梯田景观",
+            "壮族与瑶族村寨"
+          ],
+          "why_visit": [
+            "适合观察梯田地貌和村寨文化"
+          ],
+          "suggested_duration_minutes": 420,
+          "best_time": "上午入园",
+          "physical_load": "中等，包含台阶与坡路",
+          "caveats": [
+            "非自驾接驳需提前确认",
+            "雨天石阶湿滑"
+          ]
+        }
+      ]
+    }
+  ]
+}

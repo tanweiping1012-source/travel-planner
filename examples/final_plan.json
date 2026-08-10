@@ -1,0 +1,50 @@
+{
+  "name": "balanced",
+  "days": [
+    {
+      "date": "2027-04-11",
+      "theme": "阳朔滨江与老街慢游",
+      "activities": [
+        {
+          "id": "yangshuo-riverside",
+          "type": "ATTRACTION",
+          "name": "阳朔西街与漓江步道",
+          "description": "沿漓江步道与老街慢走，安排低强度抵达日活动。",
+          "features": [
+            "喀斯特山水与滨江步道",
+            "适合步行体验的老街"
+          ],
+          "why_visit": [
+            "适合作为抵达后的低强度活动"
+          ],
+          "suggested_duration_minutes": 240,
+          "best_time": "下午或傍晚",
+          "physical_load": "低",
+          "caveats": [
+            "节假日晚间人流较大"
+          ],
+          "source_refs": [
+            "xhs-note-1"
+          ]
+        }
+      ]
+    }
+  ],
+  "segments": [],
+  "flight_offers": [
+    {
+      "displayed_total_price": 1600,
+      "source": {
+        "channel": "ctrip_web",
+        "checked_at": "2026-08-10T19:00:00+08:00"
+      }
+    }
+  ],
+  "sources": [
+    {
+      "id": "xhs-note-1",
+      "url": "https://www.xiaohongshu.com/explore/example-1",
+      "checked_at": "2027-04-01T19:00:00+08:00"
+    }
+  ]
+}

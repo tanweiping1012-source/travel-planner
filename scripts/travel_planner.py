@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""CLI entry point for the travel planner MVP skill."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(SKILL_ROOT / "src"))
+
+from travel_planner.amap import AmapClient, AmapError  # noqa: E402
+from travel_planner.credentials import (  # noqa: E402
+    CredentialError,
+    KeychainCredentialStore,
+)
+from travel_planner.feasibility import evaluate_itinerary  # noqa: E402
+from travel_planner.intake import validate_trip_request  # noqa: E402
+from travel_planner.models import to_dict  # noqa: E402
+from travel_planner.research import (  # noqa: E402
+    compile_destination_brief,
+    validate_plan_content,
+)
+from travel_planner.workflow import collect_amap_snapshot  # noqa: E402
+
+
+def _read_json(path: str) -> dict:
+    with Path(path).open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _emit(data: dict, output: str = None) -> None:
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    if output:
+        Path(output).write_text(f"{text}\n", encoding="utf-8")
+    else:
+        print(text)
+
+
+def _amap_client() -> AmapClient:
+    key = KeychainCredentialStore().get("amap")
+    return AmapClient(key)
+
+
+def command_credential_status(args: argparse.Namespace) -> None:
+    _emit(KeychainCredentialStore().status("amap"))
+
+
+def command_preflight(args: argparse.Namespace) -> None:
+    _emit(_amap_client().preflight())
+
+
+def command_validate_request(args: argparse.Namespace) -> None:
+    report = validate_trip_request(_read_json(args.input))
+    _emit(report, args.output)
+    if report["status"] == "INVALID":
+        raise SystemExit(2)
+
+
+def command_search_places(args: argparse.Namespace) -> None:
+    places = _amap_client().search_places(args.keywords, args.city, args.limit)
+    _emit({"places": [to_dict(place) for place in places]})
+
+
+def command_amap_snapshot(args: argparse.Namespace) -> None:
+    request = _read_json(args.input)
+    _emit(collect_amap_snapshot(request, _amap_client()), args.output)
+
+
+def command_evaluate(args: argparse.Namespace) -> None:
+    _emit(evaluate_itinerary(_read_json(args.input)), args.output)
+
+
+def command_compile_research(args: argparse.Namespace) -> None:
+    _emit(compile_destination_brief(_read_json(args.input)), args.output)
+
+
+def command_validate_plan(args: argparse.Namespace) -> None:
+    report = validate_plan_content(_read_json(args.input))
+    _emit(report, args.output)
+    if report["status"] != "VALID":
+        raise SystemExit(2)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Read-only travel planner tools with live Amap data"
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    credential_status = subparsers.add_parser(
+        "credential-status", help="Check whether the Amap key is configured"
+    )
+    credential_status.set_defaults(func=command_credential_status)
+
+    preflight = subparsers.add_parser(
+        "preflight", help="Verify the configured Amap key with a live request"
+    )
+    preflight.set_defaults(func=command_preflight)
+
+    validate_request = subparsers.add_parser(
+        "validate-request",
+        help="Validate intake completeness and detect explicit requirement conflicts",
+    )
+    validate_request.add_argument("--input", required=True)
+    validate_request.add_argument("--output")
+    validate_request.set_defaults(func=command_validate_request)
+
+    search_places = subparsers.add_parser(
+        "search-places", help="Search live Amap POI data"
+    )
+    search_places.add_argument("--keywords", required=True)
+    search_places.add_argument("--city")
+    search_places.add_argument("--limit", type=int, default=10)
+    search_places.set_defaults(func=command_search_places)
+
+    amap_snapshot = subparsers.add_parser(
+        "amap-snapshot", help="Collect live locations, routes, and nearby POIs"
+    )
+    amap_snapshot.add_argument("--input", required=True)
+    amap_snapshot.add_argument("--output")
+    amap_snapshot.set_defaults(func=command_amap_snapshot)
+
+    evaluate = subparsers.add_parser(
+        "evaluate", help="Evaluate a normalized itinerary JSON file"
+    )
+    evaluate.add_argument("--input", required=True)
+    evaluate.add_argument("--output")
+    evaluate.set_defaults(func=command_evaluate)
+
+    compile_research = subparsers.add_parser(
+        "compile-research",
+        help="Compile normalized social notes into attraction cards",
+    )
+    compile_research.add_argument("--input", required=True)
+    compile_research.add_argument("--output")
+    compile_research.set_defaults(func=command_compile_research)
+
+    validate_plan = subparsers.add_parser(
+        "validate-plan",
+        help="Validate itinerary content completeness before presentation",
+    )
+    validate_plan.add_argument("--input", required=True)
+    validate_plan.add_argument("--output")
+    validate_plan.set_defaults(func=command_validate_plan)
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+    try:
+        args.func(args)
+    except (CredentialError, AmapError, OSError, ValueError, json.JSONDecodeError) as exc:
+        _emit(
+            {
+                "status": "ERROR",
+                "error_type": exc.__class__.__name__,
+                "message": str(exc),
+            }
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

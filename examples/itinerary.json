@@ -1,0 +1,43 @@
+{
+  "budget_cny": 1000,
+  "constraints": {
+    "max_daily_minutes": 720,
+    "max_walking_km_per_day": 10,
+    "default_transfer_buffer_minutes": 20,
+    "stale_after_hours": 24
+  },
+  "activities": [
+    {
+      "id": "west-lake",
+      "name": "西湖",
+      "type": "ATTRACTION",
+      "start": "2026-10-01T09:00:00+08:00",
+      "end": "2026-10-01T11:30:00+08:00",
+      "opening_time": "00:00",
+      "closing_time": "23:59",
+      "estimated_cost": 0,
+      "walking_km": 4
+    },
+    {
+      "id": "lingyin",
+      "name": "灵隐寺",
+      "type": "ATTRACTION",
+      "start": "2026-10-01T13:00:00+08:00",
+      "end": "2026-10-01T16:00:00+08:00",
+      "opening_time": "07:00",
+      "closing_time": "18:00",
+      "last_entry_time": "17:30",
+      "estimated_cost": 75,
+      "walking_km": 3
+    }
+  ],
+  "segments": [
+    {
+      "from_id": "west-lake",
+      "to_id": "lingyin",
+      "duration_minutes": 45,
+      "buffer_minutes": 20,
+      "estimated_cost": 8
+    }
+  ]
+}

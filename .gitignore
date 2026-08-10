@@ -1,0 +1,32 @@
+# Local provider installations and virtual environments
+vendor/
+.venv/
+venv/
+
+# Runtime artifacts that can contain travel preferences or browsing results
+runs/
+artifacts/
+output/
+*.har
+*.log
+storage-state*.json
+*cookie*
+*session*
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python and operating-system noise
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Generated release bundles
+dist/
+release/

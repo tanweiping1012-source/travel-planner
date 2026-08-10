@@ -1,0 +1,108 @@
+diff --git a/src/mcp_12306/server.py b/src/mcp_12306/server.py
+index b68aa90..1f23d72 100644
+--- a/src/mcp_12306/server.py
++++ b/src/mcp_12306/server.py
+@@ -68,7 +68,7 @@ async def call_tool(
+     """调用工具"""
+     name = params.name
+     arguments = params.arguments or {}
+-    logger.info(f"调用工具: {name}, 参数: {arguments}")
++    logger.info("调用工具: %s", name)
+ 
+     try:
+         # 获取工具处理函数
+diff --git a/src/mcp_12306/services/ticket_service.py b/src/mcp_12306/services/ticket_service.py
+index 9653b30..257b18a 100644
+--- a/src/mcp_12306/services/ticket_service.py
++++ b/src/mcp_12306/services/ticket_service.py
+@@ -25,6 +25,7 @@ logging.basicConfig(
+     level=getattr(logging, settings.log_level.upper(), logging.INFO),
+     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+ )
++logging.getLogger("httpx2").setLevel(logging.WARNING)
+ logger = logging.getLogger(__name__)
+ station_service = StationService()
+ 
+@@ -66,7 +67,7 @@ def create_12306_client() -> httpx.AsyncClient:
+     return httpx.AsyncClient(
+         follow_redirects=HTTP_FOLLOW_REDIRECTS,
+         timeout=HTTP_TIMEOUT,
+-        verify=False
++        verify=True
+     )
+ 
+ 
+@@ -430,7 +431,7 @@ async def query_tickets_validated(args: dict) -> list:
+         from_station = args.get("from_station", "").strip()
+         to_station = args.get("to_station", "").strip()
+         train_date = args.get("train_date", "").strip()
+-        logger.info(f"查询参数: {from_station} -> {to_station} ({train_date})")
++        logger.info("执行余票查询")
+ 
+         # 参数聚合校验：一次性报告所有缺失/非法项
+         errors = []
+@@ -481,9 +482,12 @@ async def query_tickets_validated(args: dict) -> list:
+                 "purpose_codes": "ADULT",
+             }
+             resp = await client.get(HTTP_URLS["query_left_ticket"], headers=HTTP_HEADERS.copy(), params=params)
+-            logger.info(f"12306 leftTicket status: {resp.status_code}, redirect: {get_redirect_info(resp)}")
++            logger.info("12306 leftTicket status: %s", resp.status_code)
+             if is_12306_error_response(resp):
+-                logger.error(f"12306接口返回异常: {resp.status_code}, final_url: {resp.url}, body: {resp.text}")
++                logger.error(
++                    "12306接口返回异常: status=%s response_bytes=%s",
++                    resp.status_code, len(resp.content),
++                )
+                 raise ApiError(
+                     "12306接口返回异常或反爬虫拦截",
+                     status_code=resp.status_code,
+@@ -493,7 +497,7 @@ async def query_tickets_validated(args: dict) -> list:
+             try:
+                 return resp.json().get("data", {}).get("result", [])
+             except ValueError as e:
+-                logger.error(f"12306响应解析失败: {e!r}，原始内容: {resp.text}")
++                logger.error("12306响应解析失败: %r response_bytes=%s", e, len(resp.content))
+                 raise ApiError("12306响应解析失败", detail=f"{type(e).__name__}: {e}") from e
+ 
+         try:
+@@ -716,16 +720,19 @@ async def get_train_route_stations_validated(args: dict) -> list:
+ 
+         async def _fetch_route(client: httpx.AsyncClient) -> Any:
+             resp = await client.get(HTTP_URLS["query_route_stations"], headers=HTTP_HEADERS.copy(), params=params)
+-            logger.info(f"12306 route query status: {resp.status_code}, redirect: {get_redirect_info(resp)}")
++            logger.info("12306 route query status: %s", resp.status_code)
+             if resp.status_code != 200:
+-                logger.error(f"12306接口返回异常状态码: {resp.status_code}, body: {resp.text}")
++                logger.error(
++                    "12306接口返回异常状态码: status=%s response_bytes=%s",
++                    resp.status_code, len(resp.content),
++                )
+                 raise ApiError(f"12306接口返回异常: {resp.status_code}")
+             if "error.html" in str(resp.url) or "ntce" in str(resp.url):
+                 raise ApiError("12306反爬虫拦截，请稍后重试或更换网络环境")
+             try:
+                 data = resp.json()
+             except ValueError as e:
+-                logger.error(f"12306响应解析失败: {e}, body: {resp.text}")
++                logger.error("12306响应解析失败: %s response_bytes=%s", e, len(resp.content))
+                 raise ApiError(f"12306响应解析失败: {e}") from e
+             logger.info(f"12306 response keys: {list(data.keys()) if data else 'None'}")
+             return data
+@@ -829,7 +836,7 @@ async def query_transfer_validated(args: dict) -> list:
+                     "channel": "E",
+                 }
+                 resp = await client.get(HTTP_URLS["query_transfer"], headers=HTTP_HEADERS.copy(), params=params)
+-                logger.info(f"12306 transfer query status: {resp.status_code}, redirect: {get_redirect_info(resp)}")
++                logger.info("12306 transfer query status: %s", resp.status_code)
+ 
+                 if is_12306_error_response(resp):
+                     if page_num == 1:
+@@ -950,7 +957,7 @@ async def query_ticket_price_validated(args: dict) -> list:
+ 
+         async def _fetch_prices(client: httpx.AsyncClient) -> Any:
+             resp = await client.get(HTTP_URLS["query_price"], headers=HTTP_HEADERS.copy(), params=params)
+-            logger.info(f"12306 price query status: {resp.status_code}, redirect: {get_redirect_info(resp)}")
++            logger.info("12306 price query status: %s", resp.status_code)
+             if is_12306_error_response(resp):
+                 logger.error(f"12306接口返回异常: {resp.status_code}, final_url: {resp.url}")
+                 raise ApiError(

@@ -1,0 +1,53 @@
+{
+  "origin": "广州",
+  "destination": "桂林与阳朔",
+  "origin_city": "广州",
+  "destination_city": "桂林",
+  "start_date": "2027-04-10",
+  "end_date": "2027-04-13",
+  "travelers": 2,
+  "budget_cny": 3500,
+  "budget_scope": "PER_PERSON",
+  "style": "balanced",
+  "must_visit": [
+    {
+      "name": "龙脊梯田",
+      "priority": "CORE"
+    }
+  ],
+  "excluded_places": [],
+  "mobility": {
+    "level": "MODERATE",
+    "max_walking_km_per_day": 8,
+    "accepts_high_altitude": false,
+    "accessibility_needs": []
+  },
+  "tradeoff_priority": [
+    "CORE_PLACES",
+    "COST",
+    "PACE",
+    "COMFORT"
+  ],
+  "risk_tolerance": {
+    "accepts_weather_dependent_core": true
+  },
+  "browser_approval": {
+    "xiaohongshu": "ALLOW_MANUAL_LOGIN",
+    "ota": "ANONYMOUS_ONLY"
+  },
+  "route_modes": [
+    "transit",
+    "driving"
+  ],
+  "transport_preferences": {
+    "accepts_early_departure": true,
+    "accepts_overnight_transport": false,
+    "accepts_transfers": true
+  },
+  "latest_return_time": null,
+  "discovery": {
+    "radius_meters": 10000,
+    "types": "110000|140000",
+    "limit": 15
+  }
+}
