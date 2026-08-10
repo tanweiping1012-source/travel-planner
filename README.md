@@ -1,6 +1,6 @@
 # Travel Planner MVP
 
-一个采用 `SKILL.md + references + scripts` 结构的只读旅行规划
+一个采用 `SKILL.md + references + scripts` 结构的旅行规划
 Agent Skill。它先从公开旅行内容中发现目的地与玩法，再使用地图和交通数据
 验证路线，最后生成经过确定性可行性检查的旅行方案。
 
