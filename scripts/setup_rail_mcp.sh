@@ -36,8 +36,8 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SKILL_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+SKILL_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
 PATCH_FILE="$SKILL_ROOT/patches/mcp-server-12306-security.patch"
 
 if [ -n "${TRAVEL_PLANNER_DATA_DIR:-}" ]; then

@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SKILL_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+SKILL_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
 TARGET=${1:-"$SKILL_ROOT"}
 FAILURES=0
 AUDIT_TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/travel-planner-audit.XXXXXX")
@@ -23,7 +23,7 @@ if [ ! -d "$TARGET" ]; then
   exit 1
 fi
 
-TARGET=$(CDPATH= cd -- "$TARGET" && pwd)
+TARGET=$(CDPATH='' cd -- "$TARGET" && pwd)
 
 for name in vendor .venv venv runs artifacts output; do
   if find "$TARGET" -type d -name "$name" -print -quit | grep -q .; then

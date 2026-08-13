@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SKILL_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+SKILL_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
 OUTPUT_DIR=${1:-"$SKILL_ROOT/dist/travel-planner-mvp"}
 
 case "$OUTPUT_DIR" in
