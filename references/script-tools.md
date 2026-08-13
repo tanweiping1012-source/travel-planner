@@ -10,6 +10,8 @@ Commands:
   requirement conflicts before research.
 - `credential-status`: check Amap Keychain configuration.
 - `preflight`: verify live Amap access.
+- `doctor`: check Python, Amap, rail runtime, MCP registration, and the browser
+  capability reported by the invoking Agent.
 - `search-places`: query normalized Amap POIs.
 - `amap-snapshot`: collect locations, routes, and nearby places.
 - `compile-research`: merge normalized social notes into attraction cards.
@@ -22,8 +24,9 @@ Stores the Amap key in macOS Keychain without writing it to project files.
 
 ### `scripts/setup_rail_mcp.sh`
 
-Installs the pinned community 12306 MCP, applies the local security patch, and
-prints the stdio configuration.
+Installs the pinned community 12306 MCP in a per-user data directory, applies
+the local security patch, and prints the stdio configuration. Pass
+`--register-codex` to register it through `codex mcp add`.
 
 ### `scripts/prepare_release.sh`
 

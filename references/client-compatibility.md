@@ -49,6 +49,10 @@ requires a browser adapter that can visibly hand control to the user.
 
 ### OpenAI Codex
 
+Preferred installation: ask `$skill-installer` to install the GitHub repository
+root as `travel-planner-mvp`. Use the absolute path returned by the installer for
+all setup commands. Manual discovery paths are:
+
 Repository scope:
 
 ```text
@@ -61,9 +65,9 @@ User scope:
 ~/.agents/skills/travel-planner-mvp/
 ```
 
-Status: Skill structure and scripts are compatible. Configure the local 12306
-MCP and a browser automation tool separately. The repository does not currently
-include an OpenAI plugin manifest.
+Status: Skill structure, `agents/openai.yaml`, and scripts are compatible.
+Configure the local 12306 MCP and a browser automation tool separately. The
+repository does not currently include an OpenAI plugin manifest.
 
 ### Cursor and Other Agents
 
@@ -81,7 +85,9 @@ depend on the client and version.
 
 ## MCP Configuration
 
-`setup_rail_mcp.sh` prints a standard stdio MCP configuration:
+Run `bash <SKILL_ROOT>/scripts/setup_rail_mcp.sh`. The script installs the
+runtime outside the Skill directory and prints a standard stdio MCP
+configuration:
 
 ```json
 {
@@ -90,7 +96,7 @@ depend on the client and version.
       "command": "uv",
       "args": [
         "--directory",
-        "/absolute/path/to/vendor/mcp-server-12306",
+        "/absolute/user-data-path/mcp-server-12306",
         "run",
         "mcp-server-12306"
       ]
@@ -101,6 +107,16 @@ depend on the client and version.
 
 Import the server using the client's MCP settings. If the client uses a
 different configuration schema, preserve the same command and argument list.
+
+For Codex, run:
+
+```bash
+bash <SKILL_ROOT>/scripts/setup_rail_mcp.sh --register-codex
+codex mcp list
+```
+
+Then restart Codex. Alternatively, add the printed command and arguments as a
+local STDIO server under `Settings -> MCP servers`.
 
 ## Browser Adapter Mapping
 
@@ -146,7 +162,7 @@ be user-provided or marked unavailable.
 Run:
 
 ```bash
-python scripts/travel_planner.py --help
+python3 <SKILL_ROOT>/scripts/travel_planner.py --help
 ```
 
 Provides intake validation, Amap queries, research compilation, feasibility
@@ -156,6 +172,7 @@ evaluation, and plan validation without an Agent client.
 
 - `setup_amap_key.sh` uses macOS Keychain.
 - Linux and Windows should supply `AMAP_API_KEY` from their own secret manager.
+- The rail runtime uses a per-user data directory and survives Skill upgrades.
 - Browser login persistence is client-specific.
 - Native app prices are not available through generic browser automation.
 - Tool names differ across browser implementations; use the logical contract,

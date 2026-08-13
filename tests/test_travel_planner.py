@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import subprocess
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT / "src"))
 
 from travel_planner.amap import AmapClient, AmapError
+from travel_planner.credentials import CredentialError, KeychainCredentialStore
+from travel_planner.diagnostics import build_doctor_report, default_data_dir
 from travel_planner.feasibility import evaluate_itinerary
 from travel_planner.intake import validate_trip_request
 from travel_planner.research import compile_destination_brief, validate_plan_content
@@ -91,6 +96,121 @@ class AmapClientTest(unittest.TestCase):
                 "driving",
             )
         self.assertNotIn("not-a-real-secret", str(context.exception))
+
+
+class CredentialStoreTest(unittest.TestCase):
+    def test_environment_value_takes_precedence_without_exposing_it(self):
+        def unexpected_runner(*_args, **_kwargs):
+            raise AssertionError("Keychain must not run when AMAP_API_KEY is set")
+
+        store = KeychainCredentialStore(
+            environment={"AMAP_API_KEY": "environment-secret"},
+            command_runner=unexpected_runner,
+        )
+        self.assertEqual(store.get("amap"), "environment-secret")
+        status = store.status("amap")
+        self.assertEqual(status["source"], "environment")
+        self.assertNotIn("environment-secret", str(status))
+
+    def test_primary_keychain_service_is_used(self):
+        def runner(args, **_kwargs):
+            service = args[args.index("-s") + 1]
+            self.assertEqual(service, "travel-planner-mvp")
+            return SimpleNamespace(stdout="primary-secret\n", returncode=0)
+
+        store = KeychainCredentialStore(environment={}, command_runner=runner)
+        value, source = store.get_with_source("amap")
+        self.assertEqual(value, "primary-secret")
+        self.assertEqual(source, "macos-keychain")
+
+    def test_legacy_keychain_service_remains_compatible(self):
+        services = []
+
+        def runner(args, **_kwargs):
+            service = args[args.index("-s") + 1]
+            services.append(service)
+            if service == "trae-travel-planner":
+                return SimpleNamespace(stdout="legacy-secret\n", returncode=0)
+            raise subprocess.CalledProcessError(44, args)
+
+        store = KeychainCredentialStore(environment={}, command_runner=runner)
+        value, source = store.get_with_source("amap")
+        self.assertEqual(value, "legacy-secret")
+        self.assertEqual(source, "macos-keychain-legacy")
+        self.assertEqual(
+            services,
+            ["travel-planner-mvp", "trae-travel-planner"],
+        )
+
+    def test_missing_key_is_reported_without_provider_details(self):
+        def runner(args, **_kwargs):
+            raise subprocess.CalledProcessError(44, args)
+
+        store = KeychainCredentialStore(environment={}, command_runner=runner)
+        with self.assertRaises(CredentialError) as context:
+            store.get("amap")
+        self.assertEqual(str(context.exception), "Amap API key is not configured")
+
+
+class DiagnosticsTest(unittest.TestCase):
+    def test_default_data_dir_is_platform_specific(self):
+        home = Path("/test/home")
+        self.assertEqual(
+            default_data_dir(environment={}, system_name="Darwin", home=home),
+            home / "Library" / "Application Support" / "travel-planner-mvp",
+        )
+        self.assertEqual(
+            default_data_dir(environment={}, system_name="Linux", home=home),
+            home / ".local" / "share" / "travel-planner-mvp",
+        )
+
+    def test_data_dir_override_must_be_absolute(self):
+        with self.assertRaisesRegex(ValueError, "must be an absolute path"):
+            default_data_dir(
+                environment={"TRAVEL_PLANNER_DATA_DIR": "relative/path"},
+                system_name="Linux",
+                home=Path("/test/home"),
+            )
+
+    def test_doctor_reports_ready_capabilities(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            data_dir = Path(temporary_directory)
+            checkout = data_dir / "mcp-server-12306"
+            (checkout / ".venv").mkdir(parents=True)
+            (checkout / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+
+            report = build_doctor_report(
+                {"provider": "amap", "status": "READY"},
+                data_dir=data_dir,
+                browser_status="available",
+                client="codex",
+                command_finder=lambda command: "/usr/bin/codex"
+                if command == "codex"
+                else None,
+                command_runner=lambda *_args, **_kwargs: SimpleNamespace(
+                    returncode=0
+                ),
+            )
+
+        self.assertEqual(report["status"], "READY")
+        self.assertEqual(report["rail_mcp"]["status"], "READY")
+        self.assertEqual(report["browser"]["status"], "AVAILABLE")
+        self.assertEqual(report["actions"], [])
+
+    def test_doctor_explains_missing_optional_capabilities(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            report = build_doctor_report(
+                {"provider": "amap", "status": "MISSING"},
+                data_dir=Path(temporary_directory),
+                browser_status="unknown",
+                client="codex",
+                command_finder=lambda _command: None,
+            )
+
+        self.assertEqual(report["status"], "NOT_READY")
+        self.assertEqual(report["rail_mcp"]["status"], "MISSING")
+        self.assertEqual(report["browser"]["status"], "UNVERIFIED")
+        self.assertTrue(report["actions"])
 
 
 class FeasibilityTest(unittest.TestCase):

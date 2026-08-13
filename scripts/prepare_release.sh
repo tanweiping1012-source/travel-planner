@@ -51,6 +51,7 @@ copy_tree() {
 }
 
 copy_file ".gitignore"
+copy_file ".gitleaks.toml"
 copy_file "SKILL.md"
 copy_file "README.md"
 copy_file "SECURITY.md"
@@ -58,6 +59,8 @@ copy_file "THIRD_PARTY_NOTICES.md"
 copy_file "LICENSE"
 
 copy_tree "examples"
+copy_tree ".github"
+copy_tree "agents"
 copy_tree "patches"
 copy_tree "references"
 copy_tree "scripts"

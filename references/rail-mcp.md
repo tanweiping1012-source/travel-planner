@@ -39,11 +39,15 @@ Never add login, order, passenger, purchase, refund, or waitlist operations.
 Run:
 
 ```bash
-./scripts/setup_rail_mcp.sh
+bash <SKILL_ROOT>/scripts/setup_rail_mcp.sh
 ```
 
-The script prints the absolute MCP configuration after setup. Use stdio mode.
-Do not expose the optional HTTP transport or bind a network port.
+The script installs the runtime under the user's data directory, not inside the
+Skill. Set `TRAVEL_PLANNER_DATA_DIR` to override that absolute location. It
+prints the absolute MCP configuration after setup. Use stdio mode. Do not expose
+the optional HTTP transport or bind a network port.
+
+For Codex, pass `--register-codex`, run `codex mcp list`, and restart Codex.
 
 ## Security Patch
 

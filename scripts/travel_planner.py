@@ -16,6 +16,7 @@ from travel_planner.credentials import (  # noqa: E402
     CredentialError,
     KeychainCredentialStore,
 )
+from travel_planner.diagnostics import build_doctor_report  # noqa: E402
 from travel_planner.feasibility import evaluate_itinerary  # noqa: E402
 from travel_planner.intake import validate_trip_request  # noqa: E402
 from travel_planner.models import to_dict  # noqa: E402
@@ -50,6 +51,28 @@ def command_credential_status(args: argparse.Namespace) -> None:
 
 def command_preflight(args: argparse.Namespace) -> None:
     _emit(_amap_client().preflight())
+
+
+def command_doctor(args: argparse.Namespace) -> None:
+    credential_store = KeychainCredentialStore()
+    amap_status = credential_store.status("amap")
+    if args.live and amap_status["status"] == "CONFIGURED":
+        try:
+            amap_status = _amap_client().preflight()
+        except (CredentialError, AmapError, OSError) as exc:
+            amap_status = {
+                "provider": "amap",
+                "status": "ERROR",
+                "error_type": exc.__class__.__name__,
+                "message": str(exc),
+            }
+    _emit(
+        build_doctor_report(
+            amap_status,
+            browser_status=args.browser_status,
+            client=args.client,
+        )
+    )
 
 
 def command_validate_request(args: argparse.Namespace) -> None:
@@ -99,6 +122,29 @@ def build_parser() -> argparse.ArgumentParser:
         "preflight", help="Verify the configured Amap key with a live request"
     )
     preflight.set_defaults(func=command_preflight)
+
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="Check Python, Amap, rail MCP, and browser readiness",
+    )
+    doctor.add_argument(
+        "--live",
+        action="store_true",
+        help="Send a live Amap request when the credential is configured",
+    )
+    doctor.add_argument(
+        "--client",
+        choices=("codex", "generic"),
+        default="codex",
+        help="Check Codex MCP registration or leave client registration unverified",
+    )
+    doctor.add_argument(
+        "--browser-status",
+        choices=("available", "unavailable", "unknown"),
+        default="unknown",
+        help="Report the browser capability observed by the invoking Agent",
+    )
+    doctor.set_defaults(func=command_doctor)
 
     validate_request = subparsers.add_parser(
         "validate-request",

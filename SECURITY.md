@@ -57,8 +57,13 @@ Review upstream changes before updating the pinned commit.
 Create releases only through:
 
 ```bash
-./scripts/prepare_release.sh
+bash scripts/prepare_release.sh
 ```
 
 Then inspect and audit the generated allowlisted directory. Do not publish the
 working Skill directory directly.
+
+Every push and pull request also runs a full-history Gitleaks scan in GitHub
+Actions. A passing working-tree audit is not a substitute for checking Git
+history, because deleting a secret in a later commit does not remove it from
+earlier commits.

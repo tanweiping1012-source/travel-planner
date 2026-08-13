@@ -11,6 +11,33 @@ Agent Skills、Shell 和 MCP 的客户端也可以使用；浏览器研究需要
 
 本 Skill 只提供信息查询与规划参考，不执行购票、预订、支付、候补、改签、退票、点赞、收藏、关注、评论或发布。
 
+## Codex 五分钟上手
+
+1. 在 Codex 中输入：
+
+   ```text
+   使用 $skill-installer 安装 GitHub 仓库
+   https://github.com/tanweiping1012-source/travel-planner
+   根目录中的 Skill，名称为 travel-planner-mvp。
+   ```
+
+2. 记录安装器返回的 Skill 绝对路径，并在 macOS 终端运行：
+
+   ```bash
+   bash <SKILL_ROOT>/scripts/setup_amap_key.sh
+   bash <SKILL_ROOT>/scripts/setup_rail_mcp.sh --register-codex
+   ```
+
+3. 重启 Codex，然后检查能力：
+
+   ```bash
+   python3 <SKILL_ROOT>/scripts/travel_planner.py doctor \
+     --live --client codex --browser-status unknown
+   ```
+
+`<SKILL_ROOT>` 必须替换为安装器返回的实际目录。每位用户配置自己的高德
+Key；Key 存入本机钥匙串，不随仓库或 Skill 分发。
+
 ## 能力概览
 
 | 能力 | 数据来源 | 作用 |
@@ -65,100 +92,19 @@ Agent Skills、Shell 和 MCP 的客户端也可以使用；浏览器研究需要
 
 ## 开始前填写
 
-可以。建议在调用 Skill 时直接填写下面的完整表单。Agent 会先运行
-`validate-request`：
+直接用自然语言描述即可。信息完整时，Agent 会运行 `validate-request` 后
+直接研究；有缺失或冲突时，会一次性汇总询问。
 
-- 表单完整且无冲突：直接开始研究，不再重复提问。
-- 有缺失或冲突：一次性汇总询问，不拆成多轮。
-
-### 完整需求表单
-
-```json
-{
-  "origin": "广州",
-  "destination": "桂林与阳朔",
-  "start_date": "2027-04-10",
-  "end_date": "2027-04-13",
-  "travelers": 2,
-  "budget_cny": 3500,
-  "budget_scope": "PER_PERSON",
-  "style": "balanced",
-  "must_visit": [
-    {
-      "name": "龙脊梯田",
-      "priority": "CORE"
-    }
-  ],
-  "excluded_places": [],
-  "mobility": {
-    "level": "MODERATE",
-    "max_walking_km_per_day": 8,
-    "accepts_high_altitude": true,
-    "accessibility_needs": []
-  },
-  "tradeoff_priority": [
-    "CORE_PLACES",
-    "COST",
-    "PACE",
-    "COMFORT"
-  ],
-  "risk_tolerance": {
-    "accepts_weather_dependent_core": true
-  },
-  "browser_approval": {
-    "xiaohongshu": "ALLOW_MANUAL_LOGIN",
-    "ota": "ANONYMOUS_ONLY"
-  },
-  "transport_preferences": {
-    "accepts_early_departure": true,
-    "accepts_overnight_transport": false,
-    "accepts_transfers": true
-  },
-  "latest_return_time": null
-}
-```
-
-字段取值：
-
-| 字段 | 可选值 | 含义 |
-|---|---|---|
-| `budget_scope` | `PER_PERSON` / `PARTY_TOTAL` | 人均预算或全体总预算 |
-| `must_visit[].priority` | `CORE` / `IMPORTANT` / `OPTIONAL` | 核心点不可被普通路线优化移除 |
-| `mobility.level` | `LOW` / `MODERATE` / `HIGH` | 低、中、高体力强度 |
-| `tradeoff_priority` | `CORE_PLACES`、`COST`、`PACE`、`COMFORT` | 从高到低排列冲突时的取舍顺序 |
-| `browser_approval.*` | `ANONYMOUS_ONLY` / `ALLOW_MANUAL_LOGIN` / `DENY` | 匿名只读、允许用户手动登录、禁止访问 |
-
-`CORE` 不代表可以突破安全或法律边界。若核心地点关闭、未开放、超出
-体力上限或无法合法抵达，Agent 仍会暂停并说明冲突。
-
-### 纯文本模板
-
-不想填写 JSON 时，可直接粘贴并填写：
+最短示例：
 
 ```text
-使用 travel-planner-mvp：
-出发地：
-核心目的地区域：
-开始日期：
-结束日期：
-人数：
-预算：人均 / 总计，人民币
-旅行风格：
-核心必去（不可删除）：
-重要但可调整：
-明确不去：
-体力等级：低 / 中 / 高
-每日最多步行：
-是否接受 4000 米以上高海拔：
-无障碍、老人、儿童或健康限制：
-冲突时优先级：核心地点 / 省钱 / 松弛 / 舒适
-是否接受核心景观受天气影响：
-是否接受早班、夜班和中转：
-每天最晚返回时间：
-小红书授权：匿名只读 / 允许我手动登录 / 禁止
-OTA 授权：匿名只读 / 允许我手动登录 / 禁止
-其他住宿、行李或饮食偏好：
+使用 $travel-planner-mvp。2027 年 4 月 10 日至 13 日，广州出发去桂林和
+阳朔，2 人，人均预算 3500 元，节奏均衡。龙脊梯田为 CORE；接受中等
+强度步行。小红书允许我手动登录，OTA 仅匿名只读。不购买或预订。
 ```
+
+完整 JSON 与纯文本需求模板见
+[`references/intake-template.md`](references/intake-template.md)。
 
 ## 输出
 
@@ -223,15 +169,15 @@ OTA 授权：匿名只读 / 允许我手动登录 / 禁止
 - **无浏览器模式**：保留需求校验、高德、高铁、可行性和方案校验；
   小红书研究和机票需要用户提供标准化 JSON，或标记为不可用。
 - **纯脚本模式**：不使用任何 Agent，直接运行
-  `python scripts/travel_planner.py --help`。
+  `python3 scripts/travel_planner.py --help`。
 
 详见
 [`references/client-compatibility.md`](references/client-compatibility.md)。
 
 ## 安装 Skill
 
-仓库根目录本身就是 Skill 目录。克隆后，将其复制或软链接到客户端的
-Skill 搜索路径。
+仓库根目录本身就是 Skill 目录。优先使用客户端的 Skill 安装器；手动
+复制或软链接只作为备选。
 
 ### TRAE
 
@@ -261,6 +207,17 @@ Skill 搜索路径。
 
 ### OpenAI Codex
 
+推荐直接在 Codex 中输入：
+
+```text
+使用 $skill-installer 安装 GitHub 仓库
+https://github.com/tanweiping1012-source/travel-planner
+根目录中的 Skill，名称为 travel-planner-mvp。
+```
+
+安装器可能根据当前 Codex 版本和 `CODEX_HOME` 使用不同目录，因此后续
+命令以安装器返回的绝对路径为准。手动安装时，官方发现路径包括：
+
 项目级：
 
 ```text
@@ -273,7 +230,8 @@ Skill 搜索路径。
 ~/.agents/skills/travel-planner-mvp/
 ```
 
-参考：[OpenAI Codex Agent Skills 官方文档](https://developers.openai.com/codex/skills)。
+安装后若未出现，重启 Codex。参考：
+[OpenAI Codex Agent Skills 官方文档](https://learn.chatgpt.com/docs/build-skills)。
 
 ### 其他客户端
 
@@ -289,25 +247,32 @@ Skill 搜索路径。
 1. 打开[高德开放平台](https://console.amap.com/dev/key/app)。
 2. 创建应用。
 3. 添加 `Web服务 API` 类型 Key。
-4. macOS 用户在 Skill 目录执行：
+4. macOS 用户执行（可在任意目录运行）：
 
 ```bash
-./scripts/setup_amap_key.sh
+bash <SKILL_ROOT>/scripts/setup_amap_key.sh
 ```
 
 脚本会把 Key 存入：
 
 ```text
-service: trae-travel-planner
+service: travel-planner-mvp
 account: amap-api-key
 ```
 
+旧版 `trae-travel-planner` 钥匙串条目仍可读取，但新配置会写入中性服务名。
 Key 不会写入项目文件。随后检查：
 
 ```bash
-python scripts/travel_planner.py credential-status
-python scripts/travel_planner.py preflight
+python3 <SKILL_ROOT>/scripts/travel_planner.py credential-status
+python3 <SKILL_ROOT>/scripts/travel_planner.py preflight
 ```
+
+新用户在自己的电脑上安装 Skill 时，不会获得仓库作者或其他用户的 Key。
+程序只在运行高德请求时从当前操作系统用户的钥匙串或当前进程环境读取 Key；
+`credential-status` 和 `doctor` 只返回是否配置及来源类型，不返回 Key 内容。
+同一台 Mac、同一系统登录账户下，获准访问该钥匙串条目的进程仍可能使用它，
+这是 macOS 钥匙串的本机权限边界。
 
 ## 配置 12306 MCP
 
@@ -317,21 +282,41 @@ python scripts/travel_planner.py preflight
 brew install uv
 ```
 
-运行：
+安装并自动注册到 Codex：
 
 ```bash
-./scripts/setup_rail_mcp.sh
+bash <SKILL_ROOT>/scripts/setup_rail_mcp.sh --register-codex
 ```
 
 该脚本会：
 
 - 下载固定 commit 的 `drfccv/mcp-server-12306`
-- 安装到本地 `vendor/`
+- 安装到用户数据目录，而不是 Skill 目录
 - 应用 TLS 与日志安全补丁
 - 创建隔离 Python 环境
-- 输出 TRAE MCP JSON 配置
+- 输出标准 stdio MCP 配置
+- 在使用 `--register-codex` 时调用 `codex mcp add`
 
-将脚本输出的标准 stdio MCP 配置导入客户端。TRAE 中粘贴到：
+默认数据目录：
+
+```text
+macOS: ~/Library/Application Support/travel-planner-mvp/
+Linux: ${XDG_DATA_HOME:-~/.local/share}/travel-planner-mvp/
+```
+
+可通过 `TRAVEL_PLANNER_DATA_DIR` 指定其他绝对路径。Skill 更新或重装不会
+覆盖该运行环境。
+
+Codex 注册后检查并重启：
+
+```bash
+codex mcp list
+```
+
+也可以在 `Codex 设置 → MCP servers → Add server → STDIO` 中使用脚本
+输出的 `command` 和 `args` 手动添加。
+
+其他客户端可导入脚本输出的标准 stdio MCP 配置。TRAE 中粘贴到：
 
 ```text
 TRAE 设置 → MCP → 手动添加
@@ -343,6 +328,18 @@ TRAE 设置 → MCP → 手动添加
 
 Claude Code、Codex 和其他 MCP 客户端使用各自的 MCP 配置入口，但应保留
 相同的 `command` 与 `args`。
+
+## 统一环境检查
+
+```bash
+python3 <SKILL_ROOT>/scripts/travel_planner.py doctor \
+  --live --client codex --browser-status unknown
+```
+
+`doctor` 检查 Python、高德、12306 运行环境、Codex MCP 注册和浏览器状态，
+并通过 `actions` 返回缺失步骤。CLI 无法自行发现 Agent 浏览器工具，因此
+手工执行时使用 `unknown`；Agent 调用时应传入实际的 `available` 或
+`unavailable`。
 
 ## 浏览器自动化授权
 
@@ -370,7 +367,7 @@ Claude Code、Codex 和其他 MCP 客户端使用各自的 MCP 配置入口，�
 在 Agent 对话中输入：
 
 ```text
-使用 travel-planner-mvp。2027 年 4 月 10 日至 13 日，广州出发去桂林和
+使用 $travel-planner-mvp。2027 年 4 月 10 日至 13 日，广州出发去桂林和
 阳朔，2 人，人均预算 3500 元。龙脊梯田是 CORE，不可因省钱或松弛被
 移除；接受中等强度步行，核心景观受天气影响可以接受。冲突时优先保证
 核心地点，其次省钱、节奏、
@@ -385,7 +382,7 @@ Claude Code、Codex 和其他 MCP 客户端使用各自的 MCP 配置入口，�
 统一入口：
 
 ```bash
-python scripts/travel_planner.py <command>
+python3 <SKILL_ROOT>/scripts/travel_planner.py <command>
 ```
 
 | 命令 | 作用 |
@@ -393,6 +390,7 @@ python scripts/travel_planner.py <command>
 | `validate-request` | 校验需求完整性、字段格式和显式冲突 |
 | `credential-status` | 检查高德 Key 是否已配置 |
 | `preflight` | 发送一次真实高德预检请求 |
+| `doctor` | 汇总检查 Python、高德、12306 MCP 与浏览器能力 |
 | `search-places` | 查询并标准化高德 POI |
 | `amap-snapshot` | 获取地点、路线和周边 POI 快照 |
 | `compile-research` | 将结构化小红书研究合并为景点卡片 |
@@ -402,16 +400,16 @@ python scripts/travel_planner.py <command>
 示例：
 
 ```bash
-python scripts/travel_planner.py \
+python3 <SKILL_ROOT>/scripts/travel_planner.py \
   validate-request \
   --input examples/trip_request.json
 
-python scripts/travel_planner.py \
+python3 <SKILL_ROOT>/scripts/travel_planner.py \
   compile-research \
   --input examples/social_research.json \
   --output /tmp/destination_brief.json
 
-python scripts/travel_planner.py \
+python3 <SKILL_ROOT>/scripts/travel_planner.py \
   validate-plan \
   --input examples/final_plan.json
 ```
@@ -434,7 +432,7 @@ Skill 不会在仓库中保存：
 生成白名单发布包：
 
 ```bash
-./scripts/prepare_release.sh
+bash scripts/prepare_release.sh
 ```
 
 输出目录：
@@ -447,7 +445,7 @@ dist/travel-planner-mvp/
 
 ```bash
 cd dist/travel-planner-mvp
-./scripts/audit_release.sh .
+bash scripts/audit_release.sh .
 git status --ignored
 git ls-files
 ```
@@ -463,10 +461,16 @@ git ls-files
 
 若本机安装了 `gitleaks`，审计脚本还会运行额外的密钥扫描。
 
+仓库还包含 GitHub Actions：在每次 push 和 pull request 时测试 Python
+3.9–3.14、校验 `SKILL.md` 与 `agents/openai.yaml`、运行 ShellCheck、生成并
+审计发布包，并由 Gitleaks 扫描完整 Git 历史。个人仓库无需额外的
+Gitleaks License；组织仓库需按该 Action 的要求配置 License。
+
 ## 测试
 
 ```bash
-python -m unittest discover -s tests -v
+python3 scripts/validate_skill.py .
+python3 -m unittest discover -s tests -v
 ```
 
 当前测试覆盖：
@@ -474,6 +478,8 @@ python -m unittest discover -s tests -v
 - 完整需求直接进入研究、缺失字段一次性汇总、需求冲突识别
 - 高德地点与路线标准化
 - 密钥不出现在错误信息中
+- 新旧 macOS 钥匙串服务名兼容
+- `doctor` 能识别缺失和就绪的本地能力
 - 时间、换乘、预算和营业时间检查
 - 小红书研究合并为景点卡片
 - 纯交通方案拒绝
