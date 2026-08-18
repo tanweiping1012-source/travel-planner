@@ -71,6 +71,32 @@ Run `validate-request` before source research. A `CORE` place is non-removable;
 candidate repair may change optional places, cost, pace, or comfort according to
 `tradeoff_priority`. Safety and legal access remain absolute constraints.
 
+### What must be asked, and what may be assumed
+
+Only three fields beyond the trip's own outline block a run, because each one
+changes the plan materially and has no safe default:
+
+- `budget_scope` — a 2000 budget per person is twice a 2000 budget for the party
+- `mobility.level` — decides which itineraries are possible at all
+- `browser_approval` — consent, which cannot be assumed on someone's behalf
+
+Everything else is assumed and reported in `assumptions`:
+
+| Field | Assumed | Reading |
+|---|---|---|
+| `must_visit` | `[]` | No place is exempt from trade-offs |
+| `excluded_places` | `[]` | Nothing to avoid |
+| `tradeoff_priority` | `CORE_PLACES, COST, PACE, COMFORT` | Keep the core sights, then save money |
+| `risk_tolerance` | accepts weather-dependent core | Re-asked if it becomes decisive |
+| `mobility.max_walking_km_per_day` | 4 / 8 / 15 by level | The stated level already answers this |
+| `mobility.accepts_high_altitude` | accepted | Re-asked if a high-altitude core place appears |
+| `mobility.accessibility_needs` | none | — |
+
+Asking for these turns a sentence a traveller would actually say into a form:
+nobody volunteers that they have no excluded places. A value that *is* supplied
+is still validated normally — defaulting on absence never softens a check on
+presence.
+
 `browser_approval` is provider-specific:
 
 - `ANONYMOUS_ONLY`: read public pages and stop at any login requirement.

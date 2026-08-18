@@ -64,8 +64,12 @@ python3 "$SKILL_ROOT/scripts/travel_planner.py" \
 
 Follow the returned status:
 
-- `READY`: continue without re-asking populated fields.
+- `READY`: continue without re-asking populated fields. Read `assumptions` and
+  carry every entry into the final plan; a default that is silently applied is
+  indistinguishable from a fact the traveller stated.
 - `NEEDS_CLARIFICATION`: ask once for all `missing_fields` and `conflicts`.
+  Ask for nothing beyond them. The validator already assumes every field that
+  has a safe reading, so anything it did not ask for is answered.
 - `INVALID`: report invalid fields and request corrected values before research.
 
 Treat `CORE` places as non-removable unless safety, legal access, closure,

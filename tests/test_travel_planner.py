@@ -1098,6 +1098,115 @@ class RailNormalizationTest(unittest.TestCase):
         self.assertIn("无座 无", text)
 
 
+class IntakeDefaultsTest(unittest.TestCase):
+    """A sentence a traveller would actually say must not become a form."""
+
+    def natural(self, **extra):
+        request = {
+            "origin": "上海",
+            "destination": "杭州",
+            "start_date": "2026-09-05",
+            "end_date": "2026-09-07",
+            "travelers": 2,
+            "budget_cny": 2000,
+            "style": "balanced",
+        }
+        request.update(extra)
+        return request
+
+    def answerable(self, **extra):
+        defaults = {
+            "budget_scope": "PER_PERSON",
+            "mobility": {"level": "MODERATE"},
+            "browser_approval": {
+                "xiaohongshu": "ALLOW_MANUAL_LOGIN",
+                "ota": "ANONYMOUS_ONLY",
+            },
+        }
+        defaults.update(extra)
+        return self.natural(**defaults)
+
+    def test_only_the_materially_ambiguous_fields_are_asked(self):
+        """2000 per person is twice 2000 for the party; the rest can default."""
+
+        report = validate_trip_request(self.natural())
+        self.assertEqual(
+            sorted(report["missing_fields"]),
+            ["browser_approval", "budget_scope", "mobility"],
+        )
+
+    def test_empty_by_nature_fields_never_block(self):
+        """Nobody volunteers that they have no excluded places."""
+
+        report = validate_trip_request(self.answerable())
+        self.assertEqual(report["status"], "READY")
+        self.assertEqual(report["errors"], [])
+        for field in ("must_visit", "excluded_places", "tradeoff_priority",
+                      "risk_tolerance"):
+            self.assertNotIn(field, report["missing_fields"])
+
+    def test_every_default_is_reported_as_an_assumption(self):
+        report = validate_trip_request(self.answerable())
+        self.assertTrue(report["assumptions"])
+        joined = " ".join(report["assumptions"])
+        self.assertIn("必去", joined)
+        self.assertIn("步行", joined)
+        self.assertIn("海拔", joined)
+
+    def test_walking_limit_follows_the_stated_level(self):
+        report = validate_trip_request(self.answerable())
+        self.assertIn("8", " ".join(report["assumptions"]))
+        low = validate_trip_request(
+            self.natural(
+                budget_scope="PER_PERSON",
+                mobility={"level": "LOW"},
+                browser_approval={"xiaohongshu": "DENY", "ota": "DENY"},
+            )
+        )
+        self.assertIn("4", " ".join(low["assumptions"]))
+
+    def test_supplied_values_are_not_replaced_by_defaults(self):
+        report = validate_trip_request(
+            self.answerable(
+                must_visit=[{"name": "西湖", "priority": "CORE"}],
+                tradeoff_priority=["COST", "CORE_PLACES", "PACE", "COMFORT"],
+                mobility={
+                    "level": "LOW",
+                    "max_walking_km_per_day": 3,
+                    "accepts_high_altitude": False,
+                },
+            )
+        )
+        self.assertEqual(report["status"], "READY")
+        joined = " ".join(report["assumptions"])
+        self.assertNotIn("必去", joined)
+        self.assertNotIn("步行", joined)
+        self.assertNotIn("海拔", joined)
+
+    def test_a_supplied_value_of_the_wrong_type_still_fails(self):
+        """Defaulting on absence must not soften validation on presence."""
+
+        report = validate_trip_request(
+            self.natural(
+                budget_scope="PER_PERSON",
+                browser_approval={"xiaohongshu": "DENY", "ota": "DENY"},
+                mobility={
+                    "level": "MODERATE",
+                    "max_walking_km_per_day": -5,
+                    "accepts_high_altitude": "yes",
+                },
+            )
+        )
+        self.assertEqual(report["status"], "INVALID")
+        self.assertEqual(len(report["errors"]), 2)
+
+    def test_the_caller_s_request_object_is_not_mutated(self):
+        request = self.answerable()
+        validate_trip_request(request)
+        self.assertNotIn("must_visit", request)
+        self.assertNotIn("tradeoff_priority", request)
+
+
 class TimeUtilTest(unittest.TestCase):
     def test_naive_clock_is_rejected_with_the_fix_in_the_message(self):
         """datetime.now() is the obvious call and returns a naive value."""

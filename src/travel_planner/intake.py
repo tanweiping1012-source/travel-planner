@@ -6,6 +6,10 @@ from datetime import date
 from typing import Any, Dict, List
 
 
+#: Fields with no safe default. Each one changes the plan materially, so the
+#: traveller has to say: a 2000 budget per person is twice a 2000 budget for
+#: the party, a mobility level decides which itineraries are even possible,
+#: and browser access is consent that cannot be assumed on someone's behalf.
 REQUIRED_FIELDS = (
     "origin",
     "destination",
@@ -15,17 +19,34 @@ REQUIRED_FIELDS = (
     "budget_cny",
     "budget_scope",
     "style",
-    "must_visit",
-    "excluded_places",
     "mobility",
-    "tradeoff_priority",
-    "risk_tolerance",
     "browser_approval",
 )
+
+#: Fields whose absence has an unambiguous reading. Asking for them turns a
+#: sentence a traveller would actually say into an interrogation — nobody
+#: volunteers that they have no excluded places — so they are assumed and
+#: reported in `assumptions` rather than blocking the run.
+ASSUMED_FIELDS = {
+    "must_visit": ([], "未指定必去地点，全部地点均可为省钱或节奏让路"),
+    "excluded_places": ([], "未指定想避开的地点"),
+    "tradeoff_priority": (
+        ["CORE_PLACES", "COST", "PACE", "COMFORT"],
+        "未指定取舍顺序，按核心地点 → 费用 → 节奏 → 舒适处理",
+    ),
+    "risk_tolerance": (
+        {"accepts_weather_dependent_core": True},
+        "未说明天气风险偏好，按接受看天景点处理",
+    ),
+}
 
 VALID_BUDGET_SCOPES = {"PER_PERSON", "PARTY_TOTAL"}
 VALID_PLACE_PRIORITIES = {"CORE", "IMPORTANT", "OPTIONAL"}
 VALID_MOBILITY_LEVELS = {"LOW", "MODERATE", "HIGH"}
+
+#: Daily walking distance implied by each mobility level, used when the
+#: traveller states a level but no number.
+WALKING_KM_BY_LEVEL = {"LOW": 4.0, "MODERATE": 8.0, "HIGH": 15.0}
 VALID_TRADEOFFS = {"CORE_PLACES", "COST", "PACE", "COMFORT"}
 VALID_BROWSER_APPROVALS = {
     "ANONYMOUS_ONLY",
@@ -69,6 +90,14 @@ def validate_trip_request(request: Dict[str, Any]) -> dict:
     conflicts: List[str] = []
     assumptions: List[str] = []
     questions: List[str] = []
+
+    # Fill the safe defaults on a copy, so the checks below see a complete
+    # request while the caller's object is left alone.
+    request = dict(request)
+    for field, (default, note) in ASSUMED_FIELDS.items():
+        if request.get(field) is None:
+            request[field] = default() if callable(default) else default
+            assumptions.append(note)
 
     for field in ("origin", "destination", "style"):
         if field in request and not _text(request.get(field)):
@@ -152,7 +181,15 @@ def validate_trip_request(request: Dict[str, Any]) -> dict:
             if level not in VALID_MOBILITY_LEVELS:
                 errors.append("mobility.level must be LOW, MODERATE, or HIGH")
             walking = mobility.get("max_walking_km_per_day")
-            if (
+            if walking is None:
+                # The stated level already implies a daily distance, so a
+                # traveller who says "moderate walking" has answered this.
+                default_walking = WALKING_KM_BY_LEVEL.get(level)
+                if default_walking is not None:
+                    assumptions.append(
+                        f"未指定每日步行上限，按 {level} 强度取 {default_walking} 公里"
+                    )
+            elif (
                 not isinstance(walking, (int, float))
                 or isinstance(walking, bool)
                 or walking < 0
@@ -160,10 +197,18 @@ def validate_trip_request(request: Dict[str, Any]) -> dict:
                 errors.append(
                     "mobility.max_walking_km_per_day must be a non-negative number"
                 )
-            if not isinstance(mobility.get("accepts_high_altitude"), bool):
+            if "accepts_high_altitude" not in mobility:
+                # Altitude is irrelevant to most destinations and nobody
+                # volunteers it, so absence is assumed rather than rejected.
+                # The workflow asks again if a high-altitude core place
+                # actually turns up, which is the point where it matters.
+                assumptions.append(
+                    "未说明海拔耐受，按可接受处理；若行程出现高海拔核心地点会再次确认"
+                )
+            elif not isinstance(mobility.get("accepts_high_altitude"), bool):
                 errors.append("mobility.accepts_high_altitude must be boolean")
             if "accessibility_needs" not in mobility:
-                assumptions.append("No accessibility needs were provided")
+                assumptions.append("未说明无障碍需求，按无特殊需求处理")
             elif not isinstance(mobility.get("accessibility_needs"), list):
                 errors.append("mobility.accessibility_needs must be an array")
 
