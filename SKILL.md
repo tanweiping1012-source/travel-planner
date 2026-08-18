@@ -97,6 +97,12 @@ Degrade safely when optional capabilities are missing:
 - Without browser automation, accept normalized social/flight JSON from the
   user or mark those channels unavailable.
 - Without Amap, do not claim verified POIs or ground routes.
+- Outside Amap's coverage, which is mainland China, `geocode` refuses rather
+  than returning coordinates. That refusal is correct and must not be worked
+  around: Amap answers an overseas query with a same-sounding Chinese place,
+  so 东京 resolves to a village in Guangxi. Continue in overseas mode, where
+  browser research is the only source and no POI, coordinate, ground route, or
+  transfer duration may be presented as verified.
 
 ## Execute the planning workflow
 

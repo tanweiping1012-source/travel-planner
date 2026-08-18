@@ -10,6 +10,7 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
+from .geomatch import assess_geocode, coverage_hint
 from .models import Location, Place, Route, Source
 
 
@@ -84,7 +85,14 @@ class AmapClient:
             "checked_at": _now(),
         }
 
-    def geocode(self, address: str, city: Optional[str] = None) -> Location:
+    def geocode(
+        self,
+        address: str,
+        city: Optional[str] = None,
+        *,
+        expect_settlement: bool = False,
+        allow_low_confidence: bool = False,
+    ) -> Location:
         params = {"address": address}
         if city:
             params["city"] = city
@@ -93,12 +101,29 @@ class AmapClient:
         if not geocodes:
             raise AmapError(f"Amap could not resolve location: {address}")
         item = geocodes[0]
+        assessment = assess_geocode(
+            address,
+            item.get("formatted_address"),
+            level=item.get("level"),
+            candidate_count=len(geocodes),
+            expect_settlement=expect_settlement,
+        )
+        if assessment["confidence"] == "LOW" and not allow_low_confidence:
+            # Returning these coordinates would be worse than returning
+            # nothing: they look verified and are not.
+            raise AmapError(
+                f"Amap 未能可靠定位「{address}」："
+                + "；".join(assessment["reasons"])
+                + "。"
+                + (coverage_hint(assessment) or "")
+            )
         longitude, latitude = self._parse_coordinates(item.get("location"))
         return Location(
             name=item.get("formatted_address") or address,
             longitude=longitude,
             latitude=latitude,
             city=item.get("city") or city,
+            match=assessment,
         )
 
     def resolve_location(self, query: str, city: Optional[str] = None) -> Location:

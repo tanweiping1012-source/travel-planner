@@ -21,6 +21,7 @@ from travel_planner.diagnostics import (
     detect_client,
 )
 from travel_planner.feasibility import evaluate_itinerary
+from travel_planner.geomatch import assess_geocode, coverage_hint
 from travel_planner.flight import (
     FlightDataError,
     offer_to_activity,
@@ -119,6 +120,94 @@ class AmapClientTest(unittest.TestCase):
                 "driving",
             )
         self.assertNotIn("not-a-real-secret", str(context.exception))
+
+
+class GeocodeMatchTest(unittest.TestCase):
+    """Amap answers an out-of-coverage query with a plausible wrong place."""
+
+    def test_a_fuzzy_match_that_dropped_the_query_is_low_confidence(self):
+        # 捷里别尔卡 (Teriberka, Russia) resolves to a village called 里别.
+        result = assess_geocode(
+            "捷里别尔卡",
+            "贵州省黔东南苗族侗族自治州丹寨县里别",
+            level="村庄",
+            candidate_count=3,
+            expect_settlement=True,
+        )
+        self.assertEqual(result["confidence"], "LOW")
+        self.assertFalse(result["name_in_address"])
+
+    def test_a_city_query_landing_on_a_village_is_low_confidence(self):
+        # 东京 matches a village genuinely named 东京 in Guangxi, so the name
+        # check passes and only the level betrays it.
+        result = assess_geocode(
+            "东京",
+            "广西壮族自治区贵港市平南县东京",
+            level="村庄",
+            candidate_count=6,
+            expect_settlement=True,
+        )
+        self.assertEqual(result["confidence"], "LOW")
+        self.assertTrue(result["name_in_address"])
+
+    def test_a_real_city_is_high_confidence(self):
+        result = assess_geocode(
+            "杭州", "浙江省杭州市", level="市", candidate_count=1,
+            expect_settlement=True,
+        )
+        self.assertEqual(result["confidence"], "HIGH")
+        self.assertEqual(result["reasons"], [])
+
+    def test_a_venue_may_legitimately_be_small(self):
+        """Only a settlement query is suspicious at village level."""
+
+        result = assess_geocode(
+            "天安门广场", "北京市东城区天安门广场", level="兴趣点",
+            candidate_count=1, expect_settlement=False,
+        )
+        self.assertEqual(result["confidence"], "HIGH")
+
+    def test_several_candidates_alone_is_only_medium(self):
+        result = assess_geocode(
+            "人民广场", "上海市黄浦区人民广场", level="市", candidate_count=4,
+            expect_settlement=True,
+        )
+        self.assertEqual(result["confidence"], "MEDIUM")
+
+    def test_the_hint_explains_coverage_rather_than_blaming_the_query(self):
+        low = assess_geocode("Murmansk", "某地", level="村庄",
+                             expect_settlement=True)
+        hint = coverage_hint(low)
+        self.assertIn("中国大陆", hint)
+        self.assertIsNone(coverage_hint(assess_geocode("杭州", "浙江省杭州市",
+                                                        level="市")))
+
+    def test_a_low_confidence_geocode_is_refused_not_returned(self):
+        """Wrong coordinates that look verified are worse than an error."""
+
+        class Transport:
+            def __call__(self, path, params):
+                return {
+                    "status": "1",
+                    "geocodes": [
+                        {
+                            "formatted_address": "广西壮族自治区贵港市平南县东京",
+                            "location": "110.451480,23.202676",
+                            "city": "贵港市",
+                            "level": "村庄",
+                        }
+                    ],
+                }
+
+        client = AmapClient("not-a-real-secret", transport=Transport())
+        with self.assertRaises(AmapError) as context:
+            client.geocode("东京", expect_settlement=True)
+        self.assertIn("东京", str(context.exception))
+        # The caller may still opt in when it knows the match is right.
+        location = client.geocode(
+            "东京", expect_settlement=True, allow_low_confidence=True
+        )
+        self.assertEqual(location.match["confidence"], "LOW")
 
 
 class CredentialStoreTest(unittest.TestCase):

@@ -90,6 +90,31 @@ Xiaohongshu is a discovery input, so it must run before transport pricing.
 
 The phase is incomplete when it only produces place names.
 
+## Coverage Gate
+
+Before any map work, establish whether the destination is inside Amap's
+coverage. Geocode the destination city with `expect_settlement=True`.
+
+A refusal is the expected answer for anywhere outside mainland China, and it
+is the safe one. Amap does not return nothing for a place it does not have —
+it returns the closest Chinese name with plausible coordinates, so 东京 comes
+back as a village in Guangxi and 捷里别尔卡 as one in Guizhou. Coordinates
+like these look exactly like verified facts and poison every distance and
+duration computed from them.
+
+When the destination is outside coverage, the run continues in **overseas
+mode**:
+
+- Do not claim a verified POI, coordinate, or ground route.
+- Do not produce transfer segments from map durations; there are none.
+- Rail is unavailable; 12306 covers only mainland China.
+- Browser research is the only remaining source, so the plan rests on it and
+  must say so.
+- Feasibility still runs, but with no route data it checks little. Say which
+  checks were skipped rather than presenting the verdict as complete.
+- `doctor` reporting `amap READY` means the credential works. It says nothing
+  about whether the destination is covered.
+
 ## Phase 2: Place and Route Validation
 
 ### Map branch
@@ -123,13 +148,21 @@ Do not ask the OTA for prices until at least one route skeleton exists.
 This branch starts only after the social browser phase is complete and the
 route skeleton identifies the required gateway city and time windows.
 
-1. Use Browser Use on an approved OTA web domain.
+1. Use Browser Use on an approved OTA web domain. Flight lists load
+   asynchronously: the page title and the date field settle long before the
+   results do, so an empty read is not an empty result. Re-read after a wait
+   instead of concluding there are no flights, and observe the failure policy
+   — stop after two consecutive empty reads rather than retrying indefinitely.
 2. Start with the route skeleton's gateway and arrival/departure deadlines.
 3. Search exact airports or city groups, dates, travelers, and cabin.
 4. Extract visible offers only.
 5. Retain channel, login state, baggage visibility, and timestamp.
 6. Reject cheap offers that break downstream transfers.
-7. Never interpret a monthly-low-price page as the requested live fare.
+7. Never interpret a monthly-low-price page as the requested live fare. The
+   date strip above the results is exactly such a page. It is worth reading,
+   because a neighbouring date is often dramatically cheaper, but a figure
+   taken from it is a `PRICE_SIGNAL`: report it as a reason to check that
+   date, never as a fare that was found.
 8. Run `validate-flights` before any offer influences a candidate. It rejects
    a leg whose arrival precedes its departure, flags a stated duration that
    disagrees with the clock, and requires the unguaranteed-price caveat.

@@ -20,6 +20,10 @@ class Location:
     longitude: float
     latitude: float
     city: Optional[str] = None
+    #: How well the geocoder's answer matched the query, from
+    #: :mod:`travel_planner.geomatch`. Absent for coordinates that did not
+    #: come from a geocode lookup.
+    match: Optional[dict] = None
 
     @property
     def coordinates(self) -> str:

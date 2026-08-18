@@ -211,6 +211,34 @@ user_provided
 }
 ```
 
+## Fare Calendar
+
+An OTA flight page usually shows a strip of neighbouring dates with an
+indicative price each. It answers a question the itinerary cannot — whether
+travelling a day later costs half as much — so capture it when present:
+
+```json
+{
+  "route": "MMK-SHA",
+  "currency": "CNY",
+  "entries": [
+    {"date": "2026-10-07", "indicative_price": 7133},
+    {"date": "2026-10-08", "indicative_price": 3817}
+  ],
+  "source": {
+    "provider": "ctrip",
+    "connector_type": "browser",
+    "channel": "ctrip_web",
+    "checked_at": "2026-08-18T19:38:00+08:00"
+  }
+}
+```
+
+Every figure here is a `PRICE_SIGNAL`, never a fare. The strip advertises a
+low price that may belong to a routing nobody would accept, or may no longer
+exist. Present it as a reason to query that date and label it unverified; a
+plan may not cost a trip from it.
+
 ## Social Research Result
 
 Browser results must be normalized before they influence a plan:
