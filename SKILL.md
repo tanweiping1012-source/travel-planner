@@ -198,6 +198,29 @@ from a blocked lookup. Leave it out.
 The scripts return structured JSON. Consume the JSON directly; do not parse
 terminal prose with regular expressions.
 
+## Test a limit before reporting one
+
+Never report a source as unavailable, or a capability as missing, on the
+strength of what the documentation says or what seems likely. Try it once,
+then report what happened.
+
+This is not a general caution; it is the correction to three specific errors
+made while building this Skill, each of which cost a real capability:
+
+- Xiaohongshu was called login-gated without an anonymous attempt ever being
+  made. It is in fact gated — but the claim was a guess that happened to land,
+  and the same guess about Ctrip would have been wrong, since Ctrip needs no
+  login at all.
+- Note images were treated as unreadable and never screenshotted. They are
+  perfectly readable, and they carry the itemised budgets that the note text
+  omits.
+- The social-research pipeline was reported as unbuilt while its code sat in
+  `research.py`, because nothing had been run.
+
+Each failure looked like caution and was actually an unverified assertion —
+the same fault as inventing a price, wearing the opposite face. When something
+cannot be tried, say that it was not tried rather than that it does not work.
+
 ## Apply source rules
 
 - Use Amap for normalized POIs, coordinates, and returned ground routes.
