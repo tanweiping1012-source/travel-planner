@@ -92,12 +92,34 @@ is shared with the browser.
 
 When login or CAPTCHA interaction is required:
 
-1. Stop browser actions.
-2. Hand control to the user with the dedicated user-interaction tool when available.
-3. Ask the user to log in or complete the challenge manually.
-4. Resume only after a fresh snapshot confirms the resulting state.
+1. Stop browser actions. Do not navigate away and do not close the tab — the
+   user needs the page in front of them, already at the login prompt.
+2. Block on the client's question tool (`AskUserQuestion` in Claude Code, or
+   the equivalent elsewhere). Prose that merely mentions login is not a
+   handoff: the run has to actually stop until the user answers, and the
+   answer has to distinguish "signed in, carry on" from "skip this source".
+3. Name the site, say what is being read, and state that the Agent will not
+   type anything into the login form.
+4. **Re-read the page after they answer.** A claim of being signed in is not
+   evidence of it, and a login wall read as an empty result is worse than an
+   error — it looks like the destination simply has no coverage.
+5. If the wall is still there, stop. Mark the provider `LOGIN_REQUIRED` and
+   continue without it. Do not ask twice.
 
-Never type a password, SMS code, identity number, or payment value.
+Never type a password, SMS code, identity number, or payment value. Handing the
+keyboard back is the whole point of the pause.
+
+### Recognising a wall
+
+Login walls do not announce themselves as errors. Detect them from the page:
+
+| Site | Anonymous behaviour, measured | Marker |
+|---|---|---|
+| Xiaohongshu search | **Zero results.** Not partial coverage — nothing. | `登录后查看搜索结果` |
+| Ctrip international flights | Fully readable. No login, no CAPTCHA. | — |
+
+Ask for a login only where one is actually needed. Ctrip needs none, so
+requesting one there spends the user's attention for nothing.
 
 ## OTA Flight Research
 
@@ -179,13 +201,23 @@ by a routing provider, and the activity carries the check-in buffer.
 
 ### Anonymous mode
 
-Try public search or user-provided share links first. Anonymous pages can expose
-titles and some full note bodies, but coverage is not guaranteed.
+**Search returns nothing at all.** Measured, not estimated: an anonymous
+search renders `登录后查看搜索结果` and zero notes. Treat anonymous search as
+unavailable rather than as thin coverage, and do not spend queries confirming
+it. A share link the user supplies may still open; that is the only anonymous
+path worth trying.
 
 ### Login mode
 
-Stable search, expanded bodies, and visible comments may require manual login.
-Use a separate browser context from the OTA session.
+Search, note bodies and comments all need a signed-in session, so a
+Xiaohongshu phase of any value begins with the login handoff above. Use a
+separate browser context from the OTA session.
+
+The comments are often worth more than the note. On one aurora-timing note a
+Murmansk resident, two travellers who had just returned and a local operator
+each gave a different month range, and one comment supplied the detail that
+decided the question — that the cheap season has no snow, and therefore none
+of the snow activities people picture. None of that was in the note body.
 
 ### Read contract
 

@@ -161,8 +161,26 @@ def compile_destination_brief(research: Dict[str, Any]) -> dict:
     }
 
 
+#: Errors a blocked source can legitimately explain.
+#:
+#: Deliberately only the absence of attractions altogether. A blocked source
+#: justifies having nothing to say; it never justifies listing a place and
+#: leaving it empty. If nothing could be researched, the place should not be
+#: in the plan at all — an attraction with no features, no reason to visit and
+#: no source did not come from a blocked lookup, it came from the model.
+_EVIDENCE_DEPENDENT_ERRORS = ("Plan has no attraction activities",)
+
+
 def validate_plan_content(plan: Dict[str, Any]) -> dict:
-    """Check that a plan explains what to visit, not only how to travel."""
+    """Check that a plan explains what to visit, not only how to travel.
+
+    A plan may also declare `unavailable_sources`. When every source that
+    could have supplied attraction content was blocked, the missing content is
+    reported as `INCOMPLETE_EVIDENCE` rather than `INVALID`: refusing to
+    return anything would be the wrong answer for a traveller who can still
+    use the transport research, and "Plan has no attraction activities" reads
+    as the author's fault when in fact nothing could be looked up.
+    """
 
     errors: List[str] = []
     warnings: List[str] = []
@@ -237,10 +255,32 @@ def validate_plan_content(plan: Dict[str, Any]) -> dict:
     errors.extend(issue["message"] for issue in flight_report["hard_conflicts"])
     warnings.extend(issue["message"] for issue in flight_report["warnings"])
 
+    unavailable = [
+        entry
+        for entry in (plan.get("unavailable_sources") or [])
+        if isinstance(entry, dict) and entry.get("provider")
+    ]
+    explained, unexplained = [], []
+    for message in errors:
+        target = explained if (
+            unavailable
+            and any(marker in message for marker in _EVIDENCE_DEPENDENT_ERRORS)
+        ) else unexplained
+        target.append(message)
+
+    if unexplained:
+        status = "INVALID"
+    elif explained:
+        status = "INCOMPLETE_EVIDENCE"
+    else:
+        status = "VALID"
+
     return {
-        "status": "VALID" if not errors else "INVALID",
-        "errors": errors,
+        "status": status,
+        "errors": unexplained,
         "warnings": warnings,
+        "unmet_by_blocked_sources": explained,
+        "unavailable_sources": unavailable,
         "summary": {
             "day_count": len(days),
             "attraction_count": attraction_count,

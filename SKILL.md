@@ -109,6 +109,11 @@ Degrade safely when optional capabilities are missing:
 1. Validate intake and resolve only reported gaps.
 2. Run `doctor` and record capability limitations.
 3. Use anonymous browser sessions first; hand login or CAPTCHA to the user.
+   Hand off by blocking on the client's question tool, not by mentioning login
+   in prose, and re-read the page afterwards — a login wall read as an empty
+   result looks exactly like a destination with no coverage. Xiaohongshu search
+   returns nothing at all while signed out; Ctrip needs no login, so do not ask
+   for one there.
 4. Run Xiaohongshu research alone, then close or isolate it before opening an
    OTA.
 5. Compile social evidence into attraction cards.
@@ -179,6 +184,16 @@ Validate final content:
 python3 "$SKILL_ROOT/scripts/travel_planner.py" \
   validate-plan --input /absolute/path/to/final_plan.json
 ```
+
+When a source could not be reached, declare it in `unavailable_sources` with a
+provider and a reason. Missing attraction content is then reported as
+`INCOMPLETE_EVIDENCE` (exit 3) instead of `INVALID`, so a destination where
+every content source is blocked still yields an honest partial answer rather
+than nothing.
+
+This excuses having no attractions. It never excuses listing one that is
+empty: a place with no features, no reason to visit and no source did not come
+from a blocked lookup. Leave it out.
 
 The scripts return structured JSON. Consume the JSON directly; do not parse
 terminal prose with regular expressions.

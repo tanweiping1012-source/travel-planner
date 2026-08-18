@@ -149,8 +149,12 @@ def command_validate_flights(args: argparse.Namespace) -> None:
 def command_validate_plan(args: argparse.Namespace) -> None:
     report = validate_plan_content(_read_json(args.input))
     _emit(report, args.output)
-    if report["status"] != "VALID":
+    if report["status"] == "INVALID":
         raise SystemExit(2)
+    if report["status"] == "INCOMPLETE_EVIDENCE":
+        # Distinct and still non-zero: a partial plan is a real outcome, but
+        # it must never be mistaken for a complete one.
+        raise SystemExit(3)
 
 
 def build_parser() -> argparse.ArgumentParser:

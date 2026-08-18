@@ -336,6 +336,28 @@ Output of `compile-research`:
 Cards with missing features, reason, duration, or sources are incomplete and
 must be enriched before route generation.
 
+## Unavailable Sources
+
+A plan may declare which providers could not be reached:
+
+```json
+{
+  "unavailable_sources": [
+    {"provider": "amap", "reason": "目的地在高德覆盖范围外"},
+    {"provider": "xiaohongshu", "reason": "匿名搜索为空，用户未授权登录"},
+    {"provider": "12306", "reason": "境外目的地，铁路连接器不适用"}
+  ]
+}
+```
+
+`validate-plan` then returns `INCOMPLETE_EVIDENCE` rather than `INVALID` when
+the only thing missing is attraction content, and lists what was excused under
+`unmet_by_blocked_sources`. Every other error stands: a missing route or a
+malformed timestamp is the plan's own fault whatever the providers did.
+
+An attraction that is present but empty is never excused. If nothing could be
+researched, the place does not belong in the plan.
+
 ## Connector Status
 
 ```json

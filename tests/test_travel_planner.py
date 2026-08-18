@@ -1187,6 +1187,122 @@ class RailNormalizationTest(unittest.TestCase):
         self.assertIn("无座 无", text)
 
 
+class BlockedSourceTest(unittest.TestCase):
+    """A destination where every content source is blocked must still answer."""
+
+    def transport_only(self, **extra):
+        plan = {
+            "name": "balanced",
+            "days": [
+                {
+                    "date": "2026-10-01",
+                    "theme": "抵达",
+                    "activities": [
+                        {
+                            "id": "fl-1",
+                            "type": "FLIGHT_INTERNATIONAL",
+                            "name": "上海→摩尔曼斯克",
+                            "description": "经莫斯科中转。",
+                            "start": "2026-10-01T11:40:00+08:00",
+                            "end": "2026-10-01T20:55:00+03:00",
+                        }
+                    ],
+                }
+            ],
+            "segments": [],
+            "sources": [],
+        }
+        plan.update(extra)
+        return plan
+
+    def blocked(self):
+        return [
+            {"provider": "amap", "reason": "目的地在高德覆盖范围外"},
+            {"provider": "xiaohongshu", "reason": "匿名搜索为空，未授权登录"},
+        ]
+
+    def test_undeclared_transport_only_plan_is_still_invalid(self):
+        """The check exists to stop a lazy plan; that must not weaken."""
+
+        report = validate_plan_content(self.transport_only())
+        self.assertEqual(report["status"], "INVALID")
+        self.assertIn("Plan has no attraction activities", report["errors"])
+
+    def test_blocked_sources_turn_it_into_incomplete_evidence(self):
+        report = validate_plan_content(
+            self.transport_only(unavailable_sources=self.blocked())
+        )
+        self.assertEqual(report["status"], "INCOMPLETE_EVIDENCE")
+        self.assertEqual(report["errors"], [])
+        self.assertIn(
+            "Plan has no attraction activities", report["unmet_by_blocked_sources"]
+        )
+        self.assertEqual(len(report["unavailable_sources"]), 2)
+
+    def test_an_empty_attraction_is_never_excused(self):
+        """Nothing researched means nothing listed, not a hollow entry."""
+
+        report = validate_plan_content(
+            self.transport_only(
+                unavailable_sources=self.blocked(),
+                days=[
+                    {
+                        "date": "2026-10-01",
+                        "theme": "抵达",
+                        "activities": [
+                            {
+                                "id": "a",
+                                "type": "ATTRACTION",
+                                "name": "某景点",
+                                "description": "没有任何依据",
+                                "start": "2026-10-01T09:00:00+08:00",
+                                "end": "2026-10-01T11:00:00+08:00",
+                            }
+                        ],
+                    }
+                ],
+            )
+        )
+        self.assertEqual(report["status"], "INVALID")
+        self.assertTrue(report["errors"])
+        self.assertEqual(report["unmet_by_blocked_sources"], [])
+
+    def test_a_declaration_must_actually_name_a_provider(self):
+        for useless in ([], ["高德挂了"], [{"reason": "没写 provider"}]):
+            report = validate_plan_content(
+                self.transport_only(unavailable_sources=useless)
+            )
+            self.assertEqual(report["status"], "INVALID")
+
+    def test_incomplete_evidence_exits_distinctly_from_invalid(self):
+        """A partial plan is a real outcome, never a successful one."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "plan.json"
+            path.write_text(
+                json.dumps(
+                    self.transport_only(unavailable_sources=self.blocked()),
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SKILL_ROOT / "scripts" / "travel_planner.py"),
+                    "validate-plan",
+                    "--input",
+                    str(path),
+                ],
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 3)
+        self.assertEqual(
+            json.loads(result.stdout)["status"], "INCOMPLETE_EVIDENCE"
+        )
+
+
 class IntakeDefaultsTest(unittest.TestCase):
     """A sentence a traveller would actually say must not become a form."""
 

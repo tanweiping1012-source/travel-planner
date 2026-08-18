@@ -65,6 +65,21 @@ python3 scripts/travel_planner.py validate-plan --input examples/final_plan.json
 - 地理匹配：查询词不在返回地址里、或城市查询落到村庄级别，均判为低置信并
   拒绝返回坐标；场所查询在村庄级别是正常的，不受影响
 
+- 来源受阻：声明了 `unavailable_sources` 时，「完全没有景点」降级为
+  `INCOMPLETE_EVIDENCE`（退出码 3）；空壳景点、缺路线等一律不赦免；声明本身
+  必须带 provider，空数组和纯字符串都不算
+
+### 受阻的来源只能为「没有」开脱，不能为「空的」开脱
+
+目的地在高德覆盖外、小红书又需要登录时，没有任何来源能提供景点内容。此前
+`validate-plan` 直接判 `INVALID: Plan has no attraction activities`——听起来
+像方案写得差，实际是无源可查，于是这个 Skill 对这类目的地产不出任何合法结果。
+
+现在可以声明 `unavailable_sources`，缺内容降级为 `INCOMPLETE_EVIDENCE`。
+
+赦免范围**刻意收得很窄，只有「完全没有景点」这一条**。查不到就不该列；列了
+却没有特色、没有理由、没有来源的景点，不是来自受阻的查询，是模型编的。
+
 ### 地理编码只信得过它证明的部分
 
 高德的地点数据以中国大陆为主，而**它对境外查询不返回空**——返回的是名称
