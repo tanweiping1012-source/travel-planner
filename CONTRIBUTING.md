@@ -1,0 +1,131 @@
+# 参与开发
+
+面向维护者和贡献者。只想使用这个 Skill 的话，看 [`README.md`](README.md) 就够了。
+
+## 开发环境
+
+```bash
+git clone https://github.com/tanweiping1012-source/travel-planner.git
+cd travel-planner
+```
+
+不需要虚拟环境，也没有运行时依赖——所有代码只用 Python 标准库。CI 覆盖
+Python 3.9 到 3.14，所以新代码必须兼容 3.9（不要用 `match`、`X | Y` 运行时
+注解等更高版本语法）。
+
+## 运行测试
+
+```bash
+python3 scripts/validate_skill.py .
+python3 -m unittest discover -s tests -v
+```
+
+再跑一遍 CI 里的示例校验：
+
+```bash
+python3 scripts/travel_planner.py validate-request --input examples/trip_request.json
+python3 scripts/travel_planner.py evaluate --input examples/itinerary.json
+python3 scripts/travel_planner.py normalize-rail --input examples/rail_query.json \
+  --select --seat-class second_class
+python3 scripts/travel_planner.py validate-plan --input examples/final_plan.json
+```
+
+测试当前覆盖：
+
+- 需求校验：完整需求直接放行、缺失字段一次性汇总、冲突识别
+- 高德地点与路线标准化，且密钥不出现在任何错误信息中
+- 新旧 macOS 钥匙串服务名兼容
+- `doctor` 识别本地能力，区分 Claude Code 与 Codex 的注册状态，且报告中
+  不回显客户端配置里的无关账号信息
+- 可行性检查：时间、换乘、预算、营业时间
+- 时区换算：同一时刻用 `Z` 与 `+08:00` 书写结论一致；未声明时区的 UTC
+  时间戳跳过营业时间检查并告警，而非误报冲突
+- 跨天分隔不被误判为缺少通勤数据，但显式跨天的夜班车照常校验
+- 评分分档：硬冲突方案不会高于软风险方案
+- 12306 余票词表（`有` / `无` / 数字）归一化与排序
+- 车次映射为活动而非路段，且不编造 `query-tickets` 未返回的票价
+- 内容完整性：纯交通方案拒绝、缺少景点间路线拒绝
+
+## 安全发布
+
+**不要直接上传本地工作目录。** 本地目录可能包含 `vendor/`、虚拟环境和运行产物。
+
+生成白名单发布包：
+
+```bash
+bash scripts/prepare_release.sh
+```
+
+输出在 `dist/travel-planner-mvp/`，只包含明确允许公开的源码、文档、测试、
+示例和补丁。发布前审计：
+
+```bash
+cd dist/travel-planner-mvp
+bash scripts/audit_release.sh .
+git status --ignored
+git ls-files
+```
+
+审计会拒绝：
+
+- `vendor/`、`.venv/`、嵌套 `.git/`
+- `.env`、私钥和证书
+- Cookie、Session、HAR 和浏览器状态文件
+- 用户绝对路径
+- 高置信密钥格式
+- 真实样式的小红书笔记 ID
+
+本机装了 `gitleaks` 的话，审计脚本还会额外做一轮密钥扫描。
+
+注意 `audit_release.sh` 是**对打包产物跑**，不是对源码树跑——源码树里有
+`vendor/` 时它会（正确地）报错。
+
+## 版本与发布
+
+采用语义化版本 `MAJOR.MINOR.PATCH`：
+
+| 位 | 什么时候加 | 例子 |
+|---|---|---|
+| MAJOR | 破坏性变更，使用者的旧数据或旧调用会失败 | 把 `timezone` 改成必填、删掉某个 CLI 命令 |
+| MINOR | 新增功能，向后兼容 | 接入新数据源、新增 CLI 命令 |
+| PATCH | 只修 bug 或文档，行为不变 | 修一个误报、补一段安装说明 |
+
+**改动量大不等于 MAJOR。** MAJOR 只跟破坏性挂钩，跟工作量无关。
+
+发布顺序——**打标签一定放最后**：
+
+```bash
+# 1. 代码和文档全部改完并推送
+git push origin main
+
+# 2. 确认 GitHub Actions 变绿
+
+# 3. 最后才打标签
+git tag -a v0.3.0 -m "简短说明"
+git push origin v0.3.0
+
+# 4. 在 GitHub 上基于该标签建 Release
+```
+
+标签是钉在某个 commit 上的图钉，不会跟着后续提交移动。先打标签再改代码，
+Release 页面下载到的就是旧版本。
+
+**永远不要移动已公开的标签。** 别人可能已经下载过，同一个版本号对应两份
+不同代码会让问题无法复现。宁可多发一个 PATCH 版本。
+
+## 提交信息
+
+说明改了什么、为什么改，以及不改会出什么问题。相比罗列改动，更重要的是让
+读者理解当初为什么需要这次改动。
+
+## CI
+
+每次 push 和 pull request 会：
+
+- 在 Python 3.9–3.14 上跑测试
+- 校验 `SKILL.md` 与 `agents/openai.yaml`
+- 运行 ShellCheck
+- 生成并审计发布包
+- 用 Gitleaks 扫描完整 Git 历史
+
+个人仓库无需额外的 Gitleaks License；组织仓库需按该 Action 的要求配置。
