@@ -66,7 +66,7 @@ bash <SKILL_ROOT>/scripts/setup_rail_mcp.sh --register-codex
 |---|---|---|
 | 目的地与玩法发现 | Browser Use | 从小红书页面提取景点、特色、建议时段、公共交通和避坑信息 |
 | 地点与市内路线 | 高德 Web API | 校验 POI、坐标、步行、公交和驾车路线 |
-| 高铁查询 | 社区 12306 MCP | 查询车次、余票、票价、经停站和中转方案 |
+| 高铁查询 | 社区 12306 MCP | 查询车次、余票、票价、经停站和中转方案；余票词表经归一化后可比较排序 |
 | 机票查询 | Browser Use | 查询指定日期的 OTA 网页可见航班、时间与参考价格 |
 | 可行性检查 | 本地 Python 规则引擎 | 检查时间冲突、换乘缓冲、营业时间、预算和体力负荷 |
 | 内容完整性检查 | 本地 Python 规则引擎 | 拒绝只有交通、缺少景点特色与游玩说明的方案 |
@@ -225,6 +225,14 @@ bash <SKILL_ROOT>/scripts/setup_rail_mcp.sh --register-codex
 ~/.claude/skills/travel-planner-mvp/
 ```
 
+推荐用软链接指向本地仓库，而不是拷贝：
+
+```bash
+ln -s /path/to/travel-planner ~/.claude/skills/travel-planner-mvp
+```
+
+这样仓库始终是唯一事实源，`git pull` 后立即生效，无需重新安装。
+
 参考：[Claude Code Skills 官方文档](https://code.claude.com/docs/en/skills)。
 
 ### OpenAI Codex
@@ -304,11 +312,13 @@ python3 <SKILL_ROOT>/scripts/travel_planner.py preflight
 brew install uv
 ```
 
-安装并自动注册到 Codex：
+安装（不注册）：
 
 ```bash
-bash <SKILL_ROOT>/scripts/setup_rail_mcp.sh --register-codex
+bash <SKILL_ROOT>/scripts/setup_rail_mcp.sh
 ```
+
+Codex 用户可加 `--register-codex` 一并完成注册。
 
 该脚本会：
 
@@ -329,7 +339,29 @@ Linux: ${XDG_DATA_HOME:-~/.local/share}/travel-planner-mvp/
 可通过 `TRAVEL_PLANNER_DATA_DIR` 指定其他绝对路径。Skill 更新或重装不会
 覆盖该运行环境。
 
-Codex 注册后检查并重启：
+### 注册到 Claude Code
+
+脚本不会自动改写客户端配置。把脚本输出的 `command` 与 `args` 填进
+`~/.claude.json` 的 `mcpServers`：
+
+```json
+{
+  "mcpServers": {
+    "12306": {
+      "type": "stdio",
+      "command": "/opt/homebrew/bin/uv",
+      "args": ["--directory", "<CHECKOUT_DIR>", "run", "mcp-server-12306"]
+    }
+  }
+}
+```
+
+`<CHECKOUT_DIR>` 用脚本打印的绝对路径。`command` 填 `which uv` 的完整
+路径，不要只写 `uv`——客户端启动时的 PATH 可能不含 Homebrew 目录。
+
+保存后重启 Claude Code，再运行 `doctor` 确认。
+
+### 注册到 Codex
 
 ```bash
 codex mcp list
@@ -354,13 +386,18 @@ Claude Code、Codex 和其他 MCP 客户端使用各自的 MCP 配置入口，�
 ## 统一环境检查
 
 ```bash
-python3 <SKILL_ROOT>/scripts/travel_planner.py doctor \
-  --live --client codex --browser-status unknown
+python3 <SKILL_ROOT>/scripts/travel_planner.py doctor --live
 ```
 
-`doctor` 检查 Python、高德、12306 运行环境、Codex MCP 注册和浏览器状态，
-并通过 `actions` 返回缺失步骤。CLI 无法自行发现 Agent 浏览器工具，因此
-手工执行时使用 `unknown`；Agent 调用时应传入实际的 `available` 或
+`doctor` 检查 Python、高德、12306 运行环境、MCP 注册和浏览器状态，并通过
+`actions` 返回缺失步骤。
+
+客户端默认自动识别（Claude Code 读 `~/.claude.json`，Codex 调用
+`codex mcp get`），也可用 `--client` 显式指定 `auto`、`codex`、
+`claude-code` 或 `generic`。
+
+CLI 无法自行发现 Agent 浏览器工具，因此手工执行时 `--browser-status`
+保持默认的 `unknown`；Agent 调用时应传入实际的 `available` 或
 `unavailable`。
 
 ## 浏览器自动化授权
@@ -507,8 +544,15 @@ python3 -m unittest discover -s tests -v
 - 高德地点与路线标准化
 - 密钥不出现在错误信息中
 - 新旧 macOS 钥匙串服务名兼容
-- `doctor` 能识别缺失和就绪的本地能力
+- `doctor` 能识别缺失和就绪的本地能力，并区分 Claude Code 与 Codex 的注册状态
+- `doctor` 报告不回显客户端配置中的无关账号信息
 - 时间、换乘、预算和营业时间检查
+- 时区换算：同一时刻用 `Z` 与 `+08:00` 书写结论一致
+- 未声明时区的 UTC 时间戳跳过营业时间检查并告警，而非误报冲突
+- 跨天分隔不被误判为缺少通勤数据，但显式跨天的夜班车照常校验
+- 评分分档：硬冲突方案不会高于软风险方案
+- 12306 余票词表（`有` / `无` / 数字）归一化与排序
+- 车次映射为活动而非路段，且不编造 `query-tickets` 未返回的票价
 - 小红书研究合并为景点卡片
 - 纯交通方案拒绝
 - 缺少景点间路线拒绝

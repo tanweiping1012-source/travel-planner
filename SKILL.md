@@ -79,7 +79,7 @@ Report the browser capability that the current Agent actually has, then run:
 
 ```bash
 python3 "$SKILL_ROOT/scripts/travel_planner.py" doctor \
-  --live --client codex --browser-status available
+  --live --browser-status available
 ```
 
 Use `unavailable` when no interactive browser exists and `unknown` when the
