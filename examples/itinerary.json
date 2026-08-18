@@ -1,5 +1,6 @@
 {
   "budget_cny": 1000,
+  "timezone": "Asia/Shanghai",
   "constraints": {
     "max_daily_minutes": 720,
     "max_walking_km_per_day": 10,

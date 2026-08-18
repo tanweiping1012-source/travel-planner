@@ -49,6 +49,40 @@ the optional HTTP transport or bind a network port.
 
 For Codex, pass `--register-codex`, run `codex mcp list`, and restart Codex.
 
+For Claude Code, add the stdio server to the `mcpServers` object in
+`~/.claude.json` and restart the client:
+
+```json
+{
+  "mcpServers": {
+    "12306": {
+      "type": "stdio",
+      "command": "/absolute/path/to/uv",
+      "args": ["--directory", "<CHECKOUT_DIR>", "run", "mcp-server-12306"]
+    }
+  }
+}
+```
+
+`<CHECKOUT_DIR>` is the path printed by the setup script. Confirm the result
+with `travel_planner.py doctor`, which detects the running client on its own.
+
+## Interpreting Results
+
+`query-tickets` reports seat availability the way 12306 does, mixing integers
+with words in a single field: an exact count while twenty or fewer remain,
+`有` once supply is comfortable, and `无` when a class is sold out. Never call
+`int()` on these values directly. Route every payload through
+`travel_planner.py normalize-rail`, which turns each value into a record
+carrying `status`, `count`, and `at_least` so candidates stay comparable.
+
+`query-tickets` carries **no fare**. A price must come from the separate
+`query-ticket-price` tool, and a plan may not state a fare that was never
+looked up.
+
+A city query returns every co-located station, so do not filter by station
+name. A neighbouring station is often faster than the one the traveller named.
+
 ## Security Patch
 
 The setup process must:

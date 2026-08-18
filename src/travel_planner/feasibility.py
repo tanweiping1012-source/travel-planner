@@ -3,8 +3,27 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime, time, timedelta, timezone
+from typing import Any, Dict, List, NamedTuple, Optional
+
+try:  # pragma: no cover - depends on the platform tz database
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover
+    ZoneInfo = None  # type: ignore[assignment]
+
+
+_TIME_WINDOW_FIELDS = ("opening_time", "closing_time", "last_entry_time")
+
+
+class _Entry(NamedTuple):
+    """An activity paired with both its absolute and its venue-local times."""
+
+    activity: dict
+    start: datetime
+    end: datetime
+    local_start: datetime
+    local_end: datetime
+    zone_declared: bool
 
 
 def _parse_datetime(value: str) -> datetime:
@@ -13,6 +32,39 @@ def _parse_datetime(value: str) -> datetime:
     if parsed.tzinfo is None:
         raise ValueError("datetime values must include a timezone offset")
     return parsed
+
+
+def _parse_clock(value: Any) -> Optional[time]:
+    """Parse a ``HH:MM`` string, returning None when it is malformed."""
+
+    try:
+        return datetime.strptime(str(value), "%H:%M").time()
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_zone(name: Any):
+    """Resolve an IANA timezone name, returning None when unusable."""
+
+    if not name or ZoneInfo is None:
+        return None
+    try:
+        return ZoneInfo(str(name))
+    except Exception:  # noqa: BLE001 - unknown zone or missing tz database
+        return None
+
+
+def _to_local(moment: datetime, zone) -> datetime:
+    """Wall-clock time at the venue.
+
+    With a declared zone the instant is converted properly. Without one we fall
+    back to reading the offset carried by the timestamp as if it were local,
+    which is only correct when the producer wrote destination-local times.
+    """
+
+    if zone is not None:
+        return moment.astimezone(zone).replace(tzinfo=None)
+    return moment.replace(tzinfo=None)
 
 
 def _issue(
@@ -40,6 +92,29 @@ def _default_departure_buffer(activity_type: str) -> int:
     }.get(activity_type.upper(), 0)
 
 
+def _first_present(*values: Any) -> Optional[int]:
+    """First value that is actually supplied, so an explicit 0 is honoured."""
+
+    for value in values:
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _score(hard_conflicts: List[dict], warnings: List[dict]) -> int:
+    """Score within status bands so a blocked plan never outranks a risky one."""
+
+    if hard_conflicts:
+        return max(0, 40 - len(hard_conflicts) * 8 - len(warnings) * 2)
+    if warnings:
+        return max(60, 95 - len(warnings) * 7)
+    return 100
+
+
 def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None) -> dict:
     """Evaluate a normalized itinerary and return deterministic issues and a score."""
 
@@ -51,7 +126,19 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
     warnings: List[dict] = []
     suggestions: List[str] = []
 
-    parsed: List[Tuple[dict, datetime, datetime]] = []
+    trip_zone_name = itinerary.get("timezone")
+    trip_zone = _resolve_zone(trip_zone_name)
+    if trip_zone_name and trip_zone is None:
+        warnings.append(
+            _issue(
+                "UNKNOWN_TIMEZONE",
+                "WARNING",
+                f"无法识别时区 {trip_zone_name}，已回退到时间戳自带的偏移量",
+                details={"timezone": str(trip_zone_name)},
+            )
+        )
+
+    parsed: List[_Entry] = []
     for activity in activities:
         activity_id = str(activity.get("id") or "")
         try:
@@ -77,55 +164,83 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
                 )
             )
             continue
-        parsed.append((activity, start, end))
 
-    parsed.sort(key=lambda item: item[1])
-    by_id = {str(item[0].get("id")): item for item in parsed}
+        own_zone_name = activity.get("timezone")
+        own_zone = _resolve_zone(own_zone_name)
+        if own_zone_name and own_zone is None:
+            warnings.append(
+                _issue(
+                    "UNKNOWN_TIMEZONE",
+                    "WARNING",
+                    f"{activity.get('name') or activity_id} 的时区 {own_zone_name} 无法识别",
+                    [activity_id],
+                    {"timezone": str(own_zone_name)},
+                )
+            )
+        zone = own_zone or trip_zone
+        parsed.append(
+            _Entry(
+                activity=activity,
+                start=start,
+                end=end,
+                local_start=_to_local(start, zone),
+                local_end=_to_local(end, zone),
+                zone_declared=zone is not None,
+            )
+        )
+
+    parsed.sort(key=lambda entry: entry.start)
     segment_index = {
         (str(segment.get("from_id")), str(segment.get("to_id"))): segment
         for segment in segments
     }
 
     for index, current in enumerate(parsed[:-1]):
-        current_activity, _, current_end = current
-        next_activity, next_start, _ = parsed[index + 1]
-        current_id = str(current_activity.get("id"))
-        next_id = str(next_activity.get("id"))
-        if next_start < current_end:
-            overlap = int((current_end - next_start).total_seconds() / 60)
+        following = parsed[index + 1]
+        current_id = str(current.activity.get("id"))
+        next_id = str(following.activity.get("id"))
+        if following.start < current.end:
+            overlap = int((current.end - following.start).total_seconds() / 60)
             hard_conflicts.append(
                 _issue(
                     "ACTIVITY_OVERLAP",
                     "HARD",
-                    f"{current_activity.get('name')} 与 {next_activity.get('name')} 重叠 {overlap} 分钟",
+                    f"{current.activity.get('name')} 与 {following.activity.get('name')} 重叠 {overlap} 分钟",
                     [current_id, next_id],
                     {"overlap_minutes": overlap},
                 )
             )
-            suggestions.append(f"调整 {next_activity.get('name')} 的开始时间或移动到其他日期")
-            continue
-
-        segment = segment_index.get((current_id, next_id))
-        if not segment:
-            warnings.append(
-                _issue(
-                    "MISSING_TRANSIT_SEGMENT",
-                    "WARNING",
-                    f"缺少 {current_activity.get('name')} 到 {next_activity.get('name')} 的真实通勤数据",
-                    [current_id, next_id],
-                )
+            suggestions.append(
+                f"调整 {following.activity.get('name')} 的开始时间或移动到其他日期"
             )
             continue
 
+        segment = segment_index.get((current_id, next_id))
+        same_day = current.local_end.date() == following.local_start.date()
+        if not segment:
+            # Across an overnight break there is no transfer to model, so a
+            # missing segment is expected rather than a gap in the research.
+            if same_day:
+                warnings.append(
+                    _issue(
+                        "MISSING_TRANSIT_SEGMENT",
+                        "WARNING",
+                        f"缺少 {current.activity.get('name')} 到 {following.activity.get('name')} 的真实通勤数据",
+                        [current_id, next_id],
+                    )
+                )
+            continue
+
         travel_minutes = int(segment.get("duration_minutes") or 0)
-        buffer_minutes = int(
-            segment.get("buffer_minutes")
-            or next_activity.get("required_buffer_minutes")
-            or _default_departure_buffer(str(next_activity.get("type") or ""))
-            or constraints.get("default_transfer_buffer_minutes")
-            or 15
+        buffer_minutes = _first_present(
+            segment.get("buffer_minutes"),
+            following.activity.get("required_buffer_minutes"),
+            _default_departure_buffer(str(following.activity.get("type") or "")) or None,
+            constraints.get("default_transfer_buffer_minutes"),
         )
-        available_minutes = int((next_start - current_end).total_seconds() / 60)
+        if buffer_minutes is None:
+            buffer_minutes = 15
+        available_minutes = int((following.start - current.end).total_seconds() / 60)
         required_minutes = travel_minutes + buffer_minutes
         if available_minutes < required_minutes:
             shortage = required_minutes - available_minutes
@@ -133,7 +248,7 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
                 _issue(
                     "INSUFFICIENT_TRANSFER_TIME",
                     "HARD",
-                    f"{current_activity.get('name')} 到 {next_activity.get('name')} 少预留 {shortage} 分钟",
+                    f"{current.activity.get('name')} 到 {following.activity.get('name')} 少预留 {shortage} 分钟",
                     [current_id, next_id],
                     {
                         "available_minutes": available_minutes,
@@ -142,40 +257,86 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
                     },
                 )
             )
-            suggestions.append(f"将 {next_activity.get('name')} 至少延后 {shortage} 分钟")
+            suggestions.append(
+                f"将 {following.activity.get('name')} 至少延后 {shortage} 分钟"
+            )
 
-    for activity, start, end in parsed:
+    for entry in parsed:
+        activity = entry.activity
         activity_id = str(activity.get("id"))
-        local_start = start.timetz().replace(tzinfo=None)
-        local_end = end.timetz().replace(tzinfo=None)
-        opening = activity.get("opening_time")
-        closing = activity.get("closing_time")
-        last_entry = activity.get("last_entry_time")
+        local_start = entry.local_start.time()
+        local_end = entry.local_end.time()
 
-        if opening and local_start < datetime.strptime(opening, "%H:%M").time():
+        declared_windows = [
+            field for field in _TIME_WINDOW_FIELDS if activity.get(field)
+        ]
+        ambiguous_zone = (
+            bool(declared_windows)
+            and not entry.zone_declared
+            and entry.start.utcoffset() == timedelta(0)
+        )
+        if ambiguous_zone:
+            # The offset says UTC, which is almost never the venue's own clock.
+            # Skip the window checks rather than block the plan on a comparison
+            # we already know may be meaningless.
+            warnings.append(
+                _issue(
+                    "AMBIGUOUS_TIMEZONE",
+                    "WARNING",
+                    f"{activity.get('name') or activity_id} 使用 UTC 时间但未声明时区，"
+                    "已跳过营业时间检查，请补充 timezone 字段",
+                    [activity_id],
+                    {"skipped_checks": declared_windows},
+                )
+            )
+
+        for field in declared_windows:
+            if _parse_clock(activity.get(field)) is None:
+                warnings.append(
+                    _issue(
+                        "INVALID_TIME_FORMAT",
+                        "WARNING",
+                        f"{activity.get('name') or activity_id} 的 {field} 格式无效，已跳过该项检查",
+                        [activity_id],
+                        {"field": field, "value": str(activity.get(field))},
+                    )
+                )
+
+        if ambiguous_zone:
+            opening = closing = last_entry = None
+        else:
+            opening = _parse_clock(activity.get("opening_time"))
+            closing = _parse_clock(activity.get("closing_time"))
+            last_entry = _parse_clock(activity.get("last_entry_time"))
+        crosses_midnight = entry.local_end.date() != entry.local_start.date()
+
+        if opening and local_start < opening:
             hard_conflicts.append(
                 _issue(
                     "BEFORE_OPENING",
                     "HARD",
-                    f"{activity.get('name')} 的到达时间早于开放时间 {opening}",
+                    f"{activity.get('name')} 的到达时间早于开放时间 "
+                    f"{activity.get('opening_time')}",
                     [activity_id],
                 )
             )
-        if closing and local_end > datetime.strptime(closing, "%H:%M").time():
+        if closing and (crosses_midnight or local_end > closing):
             hard_conflicts.append(
                 _issue(
                     "AFTER_CLOSING",
                     "HARD",
-                    f"{activity.get('name')} 的结束时间晚于闭馆时间 {closing}",
+                    f"{activity.get('name')} 的结束时间晚于闭馆时间 "
+                    f"{activity.get('closing_time')}",
                     [activity_id],
                 )
             )
-        if last_entry and local_start > datetime.strptime(last_entry, "%H:%M").time():
+        if last_entry and local_start > last_entry:
             hard_conflicts.append(
                 _issue(
                     "AFTER_LAST_ENTRY",
                     "HARD",
-                    f"到达 {activity.get('name')} 时已超过停止入场时间 {last_entry}",
+                    f"到达 {activity.get('name')} 时已超过停止入场时间 "
+                    f"{activity.get('last_entry_time')}",
                     [activity_id],
                 )
             )
@@ -206,21 +367,25 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
                 )
 
     daily = defaultdict(list)
-    for item in parsed:
-        daily[item[1].date().isoformat()].append(item)
+    for entry in parsed:
+        daily[entry.local_start.date().isoformat()].append(entry)
 
     max_daily_minutes = int(constraints.get("max_daily_minutes") or 720)
     max_walking_km = float(constraints.get("max_walking_km_per_day") or 12)
     for day, day_items in daily.items():
-        span_minutes = int((day_items[-1][2] - day_items[0][1]).total_seconds() / 60)
-        walking_km = sum(float(item[0].get("walking_km") or 0) for item in day_items)
+        span_minutes = int(
+            (day_items[-1].end - day_items[0].start).total_seconds() / 60
+        )
+        walking_km = sum(
+            float(entry.activity.get("walking_km") or 0) for entry in day_items
+        )
         if span_minutes > max_daily_minutes:
             warnings.append(
                 _issue(
                     "DAILY_DURATION_EXCEEDED",
                     "WARNING",
                     f"{day} 行程跨度 {span_minutes} 分钟，超过上限 {max_daily_minutes} 分钟",
-                    [str(item[0].get("id")) for item in day_items],
+                    [str(entry.activity.get("id")) for entry in day_items],
                 )
             )
             suggestions.append(f"减少 {day} 的活动，或将低优先级景点移到其他日期")
@@ -230,7 +395,7 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
                     "WALKING_LIMIT_EXCEEDED",
                     "WARNING",
                     f"{day} 预计步行 {walking_km:.1f} 公里，超过上限 {max_walking_km:.1f} 公里",
-                    [str(item[0].get("id")) for item in day_items],
+                    [str(entry.activity.get("id")) for entry in day_items],
                 )
             )
 
@@ -255,10 +420,9 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
     else:
         status = "FEASIBLE"
 
-    score = max(0, 100 - len(hard_conflicts) * 30 - len(warnings) * 8)
     return {
         "status": status,
-        "score": score,
+        "score": _score(hard_conflicts, warnings),
         "hard_conflicts": hard_conflicts,
         "warnings": warnings,
         "suggestions": list(dict.fromkeys(suggestions)),

@@ -1,5 +1,15 @@
 # Travel Planner MVP
 
+[![CI](https://github.com/tanweiping1012-source/travel-planner/actions/workflows/ci.yml/badge.svg)](https://github.com/tanweiping1012-source/travel-planner/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.9%20--%203.14-blue.svg)](pyproject.toml)
+
+**让 AI 用真实数据规划旅行，而不是靠搜索来的二手攻略。**
+
+行程里的每一个数字——距离、通勤时长、余票、票价——都来自工具调用并带来源和时间戳。
+模型只负责取舍和解释，不生成任何数字。生成的行程会先过一遍确定性可行性检查
+（时间窗、换乘余量、营业时间、预算），排不通的方案不会送到你面前。
+
 一个采用 `SKILL.md + references + scripts` 结构的旅行规划
 Agent Skill。它先从公开旅行内容中发现目的地与玩法，再使用地图和交通数据
 验证路线，最后生成经过确定性可行性检查的旅行方案。
@@ -11,32 +21,44 @@ Agent Skills、Shell 和 MCP 的客户端也可以使用；浏览器研究需要
 
 本 Skill 只提供信息查询与规划参考，不执行购票、预订、支付、候补、改签、退票、点赞、收藏、关注、评论或发布。
 
-## Codex 五分钟上手
+## 五分钟上手
 
-1. 在 Codex 中输入：
+### Claude Code
 
-   ```text
-   使用 $skill-installer 安装 GitHub 仓库
-   https://github.com/tanweiping1012-source/travel-planner
-   根目录中的 Skill，名称为 travel-planner-mvp。
-   ```
+```bash
+git clone https://github.com/tanweiping1012-source/travel-planner.git
+ln -s "$(pwd)/travel-planner" ~/.claude/skills/travel-planner-mvp
+bash ~/.claude/skills/travel-planner-mvp/scripts/setup_amap_key.sh
+bash ~/.claude/skills/travel-planner-mvp/scripts/setup_rail_mcp.sh
+```
 
-2. 记录安装器返回的 Skill 绝对路径，并在 macOS 终端运行：
+用软链接而非拷贝，仓库始终是唯一事实源。然后把 12306 加进 `~/.claude.json`
+的 `mcpServers`（setup 脚本会打印所需路径），重启客户端，再运行：
 
-   ```bash
-   bash <SKILL_ROOT>/scripts/setup_amap_key.sh
-   bash <SKILL_ROOT>/scripts/setup_rail_mcp.sh --register-codex
-   ```
+```bash
+python3 ~/.claude/skills/travel-planner-mvp/scripts/travel_planner.py doctor --live
+```
 
-3. 重启 Codex，然后检查能力：
+`doctor` 会自动识别当前客户端，无需手动指定。
 
-   ```bash
-   python3 <SKILL_ROOT>/scripts/travel_planner.py doctor \
-     --live --client codex --browser-status unknown
-   ```
+### OpenAI Codex
 
-`<SKILL_ROOT>` 必须替换为安装器返回的实际目录。每位用户配置自己的高德
-Key；Key 存入本机钥匙串，不随仓库或 Skill 分发。
+```text
+使用 $skill-installer 安装 GitHub 仓库
+https://github.com/tanweiping1012-source/travel-planner
+根目录中的 Skill，名称为 travel-planner-mvp。
+```
+
+记录安装器返回的绝对路径，然后：
+
+```bash
+bash <SKILL_ROOT>/scripts/setup_amap_key.sh
+bash <SKILL_ROOT>/scripts/setup_rail_mcp.sh --register-codex
+```
+
+重启 Codex 后运行 `doctor --live` 检查。
+
+每位用户配置自己的高德 Key；Key 存入本机钥匙串，不随仓库或 Skill 分发。
 
 ## 能力概览
 
@@ -393,6 +415,7 @@ python3 <SKILL_ROOT>/scripts/travel_planner.py <command>
 | `doctor` | 汇总检查 Python、高德、12306 MCP 与浏览器能力 |
 | `search-places` | 查询并标准化高德 POI |
 | `amap-snapshot` | 获取地点、路线和周边 POI 快照 |
+| `normalize-rail` | 归一化 12306 余票数据（`有`/`无`/数字混用），并筛选候选车次 |
 | `compile-research` | 将结构化小红书研究合并为景点卡片 |
 | `evaluate` | 运行时间、换乘、预算、营业时间等可行性检查 |
 | `validate-plan` | 检查最终方案是否包含完整景点内容与来源 |
@@ -408,6 +431,11 @@ python3 <SKILL_ROOT>/scripts/travel_planner.py \
   compile-research \
   --input examples/social_research.json \
   --output /tmp/destination_brief.json
+
+python3 <SKILL_ROOT>/scripts/travel_planner.py \
+  normalize-rail \
+  --input examples/rail_query.json \
+  --select --seat-class second_class --limit 5
 
 python3 <SKILL_ROOT>/scripts/travel_planner.py \
   validate-plan \

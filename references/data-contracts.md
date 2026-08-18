@@ -343,6 +343,7 @@ reason. A plan containing only transport activities is invalid.
 ```json
 {
   "budget_cny": 1000,
+  "timezone": "Asia/Shanghai",
   "constraints": {
     "max_daily_minutes": 720,
     "max_walking_km_per_day": 10,
@@ -377,3 +378,125 @@ reason. A plan containing only transport activities is invalid.
 
 All datetimes must contain a timezone offset. Dynamic data must contain
 `source_checked_at`.
+
+### Timezones
+
+`opening_time`, `closing_time` and `last_entry_time` are wall-clock times at the
+venue, so the evaluator needs to know which clock to read `start` and `end` on.
+
+- `timezone` (trip level) is an IANA name such as `Asia/Shanghai`. Set it
+  whenever opening hours are supplied.
+- An activity may carry its own `timezone`, which overrides the trip value.
+  Use this for multi-country trips.
+- When no zone is declared, the offset carried by `start` and `end` is read as
+  the venue's local clock. That is correct only if the producer wrote
+  destination-local times.
+- If no zone is declared **and** the timestamps are UTC, the opening-hours
+  checks are skipped and an `AMBIGUOUS_TIMEZONE` warning is emitted, because
+  comparing a UTC clock against local opening hours is meaningless.
+
+Prefer IANA names over fixed offsets: they carry daylight-saving rules, which
+fixed offsets cannot express.
+
+### Transfers across days
+
+Consecutive activities on different local dates are separated by an overnight
+break, so a missing segment between them is not reported. A segment that *is*
+declared across a day boundary — an overnight train, for example — is still
+checked for sufficient transfer time.
+
+### Buffers
+
+`buffer_minutes` resolves in this order, and an explicit `0` is honoured rather
+than being replaced by a later default: segment `buffer_minutes` → the next
+activity's `required_buffer_minutes` → the departure default for its `type`
+(domestic flight 120, international flight 180, train 45, bus 30) →
+`constraints.default_transfer_buffer_minutes` → 15.
+
+### Score bands
+
+`score` is banded by `status` so that a blocked plan can never outrank a merely
+risky one: `FEASIBLE` is 100, `FEASIBLE_WITH_RISK` falls in 60–95, and
+`INFEASIBLE` stays at or below 40. Compare scores only within the same status.
+
+## Rail Data from the 12306 MCP
+
+The *Rail Option* contract above is the shape a plan consumes. This section
+describes what the MCP actually returns and how it gets there.
+
+`query-tickets` returns one entry per train:
+
+```json
+{
+  "success": true,
+  "from_station": "上海",
+  "to_station": "杭州",
+  "train_date": "2026-08-20",
+  "trains": [
+    {
+      "train_no": "G1321",
+      "from_station": "上海虹桥",
+      "to_station": "杭州东",
+      "start_time": "06:07",
+      "arrive_time": "06:56",
+      "duration": "00:49",
+      "seats": {"business": "9", "first_class": "有", "second_class": "有",
+                "no_seat": "无"}
+    }
+  ]
+}
+```
+
+### Seat availability is not a number
+
+`seats` mixes integers with words in the same field, following 12306's own
+convention: an exact count while twenty or fewer remain, `有` above that, and
+`无` when sold out. Calling `int()` on a raw value raises. `normalize-rail`
+converts each value into:
+
+```json
+{"status": "AVAILABLE", "count": null, "at_least": 21, "raw": "有"}
+```
+
+`status` is one of `AVAILABLE`, `LIMITED`, `SOLD_OUT`, `UNKNOWN`. Use
+`at_least` to rank candidates: `有` has no exact count but is still known to
+exceed any exact count, so ordering stays correct without inventing a number.
+
+### No fare is included
+
+`query-tickets` carries no price. A fare must come from `query-ticket-price`,
+and a segment or activity records where it came from:
+
+```json
+{"estimated_cost": 73.0, "price_source": "12306:query-ticket-price"}
+```
+
+An itinerary may not state a fare that was never looked up.
+
+### A train is an activity, not a segment
+
+The journey time belongs to the train itself, so a train maps to an
+**activity** whose `start` and `end` are the departure and arrival times, and
+which carries `required_buffer_minutes` for the boarding gate. Reaching the
+station is a **separate segment** whose duration comes from a routing
+provider. Putting the journey time on a segment would claim that the transfer
+into the train takes as long as the ride.
+
+Clock times only are supplied, so an arrival earlier than the departure means
+the train arrives the next day; the normalized record flags this as
+`arrives_next_day` and the activity's `end` date is advanced accordingly.
+
+### Do not filter by station name
+
+A city query returns every co-located station. The fastest option is often at
+a neighbouring station rather than the one the traveller named, so present the
+alternatives instead of discarding them.
+
+### Pipeline
+
+```text
+query-tickets ──▶ normalize-rail ──▶ train_to_activity ──▶ evaluate
+                       │                                     ▲
+query-ticket-price ────┘                 route matrix ───────┘
+                    (fare)                  (segment)
+```

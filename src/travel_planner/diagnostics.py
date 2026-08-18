@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
@@ -68,26 +69,80 @@ def _codex_mcp_status(
     }
 
 
+def _claude_code_mcp_status(
+    server_name: str = "12306",
+    config_path: Optional[Path] = None,
+) -> dict:
+    """Check whether Claude Code has the rail MCP registered.
+
+    Only the presence of the server name is read. The rest of the file holds
+    unrelated account and project state, none of which belongs in a report.
+    """
+
+    path = config_path or Path.home() / ".claude.json"
+    if not path.is_file():
+        return {
+            "status": "MISSING",
+            "message": "No Claude Code configuration found at ~/.claude.json.",
+        }
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {
+            "status": "UNVERIFIED",
+            "message": "The Claude Code configuration could not be read.",
+        }
+    servers = config.get("mcpServers")
+    if isinstance(servers, dict) and server_name in servers:
+        return {"status": "READY", "client": "claude-code"}
+    return {
+        "status": "MISSING",
+        "message": "The 12306 MCP is not registered in Claude Code.",
+    }
+
+
+def detect_client(
+    environment: Optional[Mapping[str, str]] = None,
+    command_finder: Callable[[str], Optional[str]] = shutil.which,
+) -> str:
+    """Guess which Agent client is running this Skill."""
+
+    environment = environment if environment is not None else os.environ
+    if environment.get("CLAUDECODE") or environment.get("CLAUDE_CODE_ENTRYPOINT"):
+        return "claude-code"
+    if environment.get("CODEX_SANDBOX") or environment.get("CODEX_HOME"):
+        return "codex"
+    if command_finder("codex"):
+        return "codex"
+    if (Path.home() / ".claude.json").is_file():
+        return "claude-code"
+    return "generic"
+
+
 def build_doctor_report(
     amap_status: dict,
     *,
     data_dir: Optional[Path] = None,
     browser_status: str = "unknown",
-    client: str = "codex",
+    client: str = "auto",
+    claude_config_path: Optional[Path] = None,
     command_finder: Callable[[str], Optional[str]] = shutil.which,
     command_runner=subprocess.run,
 ) -> dict:
     resolved_data_dir = data_dir or default_data_dir()
     python_ready = sys.version_info >= (3, 9)
     rail_runtime = _rail_runtime_status(resolved_data_dir)
-    rail_registration = (
-        _codex_mcp_status(command_finder, command_runner)
-        if client == "codex"
-        else {
+    if client == "auto":
+        client = detect_client(command_finder=command_finder)
+    if client == "codex":
+        rail_registration = _codex_mcp_status(command_finder, command_runner)
+    elif client == "claude-code":
+        rail_registration = _claude_code_mcp_status(config_path=claude_config_path)
+    else:
+        rail_registration = {
             "status": "UNVERIFIED",
             "message": "Verify the stdio MCP in the selected Agent client.",
         }
-    )
 
     if rail_runtime["status"] == "READY" and rail_registration["status"] == "READY":
         rail_status = "READY"
@@ -122,7 +177,11 @@ def build_doctor_report(
             "Run setup_rail_mcp.sh from the installed Skill to install the rail runtime."
         )
     elif rail_registration["status"] == "MISSING":
-        actions.append("Register the installed 12306 stdio MCP in Codex.")
+        actions.append(
+            "Register the installed 12306 stdio MCP in "
+            + {"codex": "Codex", "claude-code": "Claude Code"}.get(client, "the client")
+            + "."
+        )
     if browser["status"] == "UNVERIFIED":
         actions.append("Confirm whether the Agent client provides an interactive browser.")
 
@@ -140,6 +199,7 @@ def build_doctor_report(
             },
             "amap": amap_status,
         },
+        "client": client,
         "rail_mcp": {
             "status": rail_status,
             "runtime": rail_runtime,

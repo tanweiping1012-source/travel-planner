@@ -129,6 +129,20 @@ python3 "$SKILL_ROOT/scripts/travel_planner.py" \
   --output /absolute/path/to/destination_brief.json
 ```
 
+Normalize a 12306 `query-tickets` payload before reading any seat value:
+
+```bash
+python3 "$SKILL_ROOT/scripts/travel_planner.py" \
+  normalize-rail \
+  --input /absolute/path/to/rail_query.json \
+  --select --seat-class second_class --limit 5 \
+  --output /absolute/path/to/rail_candidates.json
+```
+
+Seat availability mixes integers with `有` and `无`, so never compare the raw
+values. A train ride becomes an *activity*; the ride to the station is a
+separate segment whose duration comes from Amap.
+
 Evaluate an itinerary:
 
 ```bash

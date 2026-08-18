@@ -1,0 +1,121 @@
+{
+  "success": true,
+  "from_station": "上海",
+  "to_station": "杭州",
+  "train_date": "2026-08-20",
+  "count": 7,
+  "trains": [
+    {
+      "train_no": "G4917",
+      "from_station": "上海虹桥",
+      "from_station_code": "AOH",
+      "to_station": "杭州东",
+      "to_station_code": "HGH",
+      "start_time": "05:44",
+      "arrive_time": "06:29",
+      "duration": "00:45",
+      "seats": {
+        "business": "无",
+        "first_class": "2",
+        "second_class": "有",
+        "no_seat": "无"
+      }
+    },
+    {
+      "train_no": "G7541",
+      "from_station": "上海虹桥",
+      "from_station_code": "AOH",
+      "to_station": "杭州东",
+      "to_station_code": "HGH",
+      "start_time": "05:52",
+      "arrive_time": "06:51",
+      "duration": "00:59",
+      "seats": {
+        "business": "有",
+        "first_class": "有",
+        "second_class": "有",
+        "no_seat": "无"
+      }
+    },
+    {
+      "train_no": "G1321",
+      "from_station": "上海虹桥",
+      "from_station_code": "AOH",
+      "to_station": "杭州东",
+      "to_station_code": "HGH",
+      "start_time": "06:07",
+      "arrive_time": "06:56",
+      "duration": "00:49",
+      "seats": {
+        "business": "9",
+        "first_class": "有",
+        "second_class": "有",
+        "no_seat": "6"
+      }
+    },
+    {
+      "train_no": "G7331",
+      "from_station": "上海虹桥",
+      "from_station_code": "AOH",
+      "to_station": "杭州东",
+      "to_station_code": "HGH",
+      "start_time": "06:13",
+      "arrive_time": "07:07",
+      "duration": "00:54",
+      "seats": {
+        "business": "1",
+        "first_class": "10",
+        "second_class": "有",
+        "no_seat": "无"
+      }
+    },
+    {
+      "train_no": "G7333",
+      "from_station": "上海虹桥",
+      "from_station_code": "AOH",
+      "to_station": "杭州东",
+      "to_station_code": "HGH",
+      "start_time": "06:20",
+      "arrive_time": "07:21",
+      "duration": "01:01",
+      "seats": {
+        "business": "10",
+        "first_class": "有",
+        "second_class": "有",
+        "no_seat": "有"
+      }
+    },
+    {
+      "train_no": "G3091",
+      "from_station": "上海虹桥",
+      "from_station_code": "AOH",
+      "to_station": "杭州西",
+      "to_station_code": "HVU",
+      "start_time": "06:20",
+      "arrive_time": "07:52",
+      "duration": "01:32",
+      "seats": {
+        "business": "无",
+        "first_class": "5",
+        "second_class": "有",
+        "no_seat": "2"
+      }
+    },
+    {
+      "train_no": "Z175",
+      "from_station": "上海松江",
+      "from_station_code": "IMH",
+      "to_station": "杭州",
+      "to_station_code": "HZH",
+      "start_time": "04:08",
+      "arrive_time": "05:50",
+      "duration": "01:42",
+      "seats": {
+        "soft_sleeper": "15",
+        "hard_sleeper": "有",
+        "hard_seat": "有",
+        "no_seat": "有"
+      }
+    }
+  ]
+}

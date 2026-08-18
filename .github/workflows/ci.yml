@@ -25,6 +25,7 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - run: python scripts/travel_planner.py validate-request --input examples/trip_request.json
       - run: python scripts/travel_planner.py evaluate --input examples/itinerary.json
+      - run: python scripts/travel_planner.py normalize-rail --input examples/rail_query.json --select --seat-class second_class
       - run: python scripts/travel_planner.py validate-plan --input examples/final_plan.json
 
   release-audit:

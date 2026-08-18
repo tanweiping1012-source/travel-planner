@@ -20,6 +20,10 @@ from travel_planner.diagnostics import build_doctor_report  # noqa: E402
 from travel_planner.feasibility import evaluate_itinerary  # noqa: E402
 from travel_planner.intake import validate_trip_request  # noqa: E402
 from travel_planner.models import to_dict  # noqa: E402
+from travel_planner.rail import (  # noqa: E402
+    normalize_query_result,
+    select_trains,
+)
 from travel_planner.research import (  # noqa: E402
     compile_destination_brief,
     validate_plan_content,
@@ -100,6 +104,22 @@ def command_compile_research(args: argparse.Namespace) -> None:
     _emit(compile_destination_brief(_read_json(args.input)), args.output)
 
 
+def command_normalize_rail(args: argparse.Namespace) -> None:
+    report = normalize_query_result(_read_json(args.input))
+    if args.select:
+        report["trains"] = select_trains(
+            report["trains"],
+            seat_class=args.seat_class,
+            earliest_departure=args.earliest,
+            latest_departure=args.latest,
+            max_duration_minutes=args.max_duration,
+            require_seat=not args.include_sold_out,
+            limit=args.limit,
+        )
+        report["count"] = len(report["trains"])
+    _emit(report, args.output)
+
+
 def command_validate_plan(args: argparse.Namespace) -> None:
     report = validate_plan_content(_read_json(args.input))
     _emit(report, args.output)
@@ -134,9 +154,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     doctor.add_argument(
         "--client",
-        choices=("codex", "generic"),
-        default="codex",
-        help="Check Codex MCP registration or leave client registration unverified",
+        choices=("auto", "codex", "claude-code", "generic"),
+        default="auto",
+        help="Which Agent client to check MCP registration in",
     )
     doctor.add_argument(
         "--browser-status",
@@ -183,6 +203,25 @@ def build_parser() -> argparse.ArgumentParser:
     compile_research.add_argument("--input", required=True)
     compile_research.add_argument("--output")
     compile_research.set_defaults(func=command_compile_research)
+
+    normalize_rail = subparsers.add_parser(
+        "normalize-rail",
+        help="Normalize a 12306 query-tickets payload into comparable records",
+    )
+    normalize_rail.add_argument("--input", required=True)
+    normalize_rail.add_argument("--output")
+    normalize_rail.add_argument(
+        "--select", action="store_true", help="Also narrow to usable candidates"
+    )
+    normalize_rail.add_argument("--seat-class", dest="seat_class")
+    normalize_rail.add_argument("--earliest", help="Earliest departure, HH:MM")
+    normalize_rail.add_argument("--latest", help="Latest departure, HH:MM")
+    normalize_rail.add_argument("--max-duration", type=int, dest="max_duration")
+    normalize_rail.add_argument("--limit", type=int, default=10)
+    normalize_rail.add_argument(
+        "--include-sold-out", action="store_true", dest="include_sold_out"
+    )
+    normalize_rail.set_defaults(func=command_normalize_rail)
 
     validate_plan = subparsers.add_parser(
         "validate-plan",
