@@ -227,6 +227,17 @@ Browser results must be normalized before they influence a plan:
 }
 ```
 
+Each entry in `claims` carries a `type` drawn from the evidence classes in
+[browser use](browser-use.md): `ROUTE_HYPOTHESIS`, `TRAVEL_TIME_HINT`,
+`PRICE_SIGNAL`, `EXPERIENCE`, `SEASONAL`, `QUEUE`, `CLOSURE`.
+
+The class decides how a claim may travel through the pipeline. A
+`ROUTE_HYPOTHESIS` may order a day but is settled by Amap and the feasibility
+checker; a `TRAVEL_TIME_HINT` is superseded by the routing provider; a
+`PRICE_SIGNAL` may inform a budget conversation but must be labelled unverified
+and never becomes `estimated_cost` on its own. `EXPERIENCE` and `SEASONAL`
+claims are usable as written, attributed to the note.
+
 Social notes are experience evidence, not authoritative facts. Validate every
 place name, coordinate, route, opening time, and price with a stronger source.
 

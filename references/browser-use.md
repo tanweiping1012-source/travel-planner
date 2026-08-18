@@ -142,6 +142,32 @@ Extract only page-visible fields:
 Do not claim that a web price matches the native app. Do not claim final
 availability until a refresh succeeds.
 
+### Handoff to validation
+
+Normalize each result into the Flight Offer contract in
+[data contracts](data-contracts.md) and run the deterministic gate before the
+plan is shown:
+
+```bash
+python3 "$SKILL_ROOT/scripts/travel_planner.py" \
+  validate-flights --input /absolute/path/to/final_plan.json
+```
+
+The checker enforces what a page read cannot guarantee on its own:
+
+- `checked_at` must be **within two hours** of presentation. Rail fares barely
+  move, so a day-old lookup still informs; an airfare from this morning may
+  not. `STALE_FLIGHT_PRICE` means re-query the offer, not re-label it.
+- Departure, arrival and any stated duration must agree. A read that lands on
+  the wrong row produces a leg claiming eighty minutes across a three-hour
+  gap, and `DURATION_MISMATCH` catches it.
+- `final_price_guaranteed` is false on nearly every web result, and
+  `PRICE_NOT_GUARANTEED` requires the plan to carry that caveat.
+
+A flight then enters the itinerary as an **activity**, not a segment: the
+flight time is the ride, reaching the airport is a separate segment measured
+by a routing provider, and the activity carries the check-in buffer.
+
 ### Collection limit
 
 - Collect enough results to represent cheapest, fastest, and balanced choices.
@@ -171,8 +197,10 @@ For each selected note, capture:
 - Note URL
 - Visible body text
 - Place names
-- Suggested sequence or timing
+- Suggested sequence or timing, recorded as `ROUTE_HYPOTHESIS`
+- Chartered-car, ticket and other cost figures, recorded as `PRICE_SIGNAL`
 - Queue, closure, weather, and transport claims
+- Seasonal timing such as foliage or bloom windows
 - Visible engagement counts only when useful
 
 For each major place, produce enough evidence to explain:
@@ -183,6 +211,31 @@ For each major place, produce enough evidence to explain:
 - Best time of day or season when stated
 - Physical load or altitude
 - Transport, queue, closure, and cost caveats
+
+### Evidence classes
+
+Xiaohongshu is researched for far more than destination discovery. Route
+sequencing, chartered-car and ticket price levels, queue times, perceived
+effort, and seasonal timing all come from here and all shape the plan. What
+differs is how each claim is allowed to enter it.
+
+Every captured claim belongs to exactly one class:
+
+| Class | Example | How it may be used |
+|---|---|---|
+| `ROUTE_HYPOTHESIS` | 「这三个点一天能串完」 | A candidate ordering only. Amap computes the real travel times and the feasibility checker rules on it. |
+| `TRAVEL_TIME_HINT` | 「打车过去 20 分钟」 | A hint that Amap recomputes. The Amap figure wins on any disagreement. |
+| `PRICE_SIGNAL` | 「包车 200 一天」 | A market signal, never a verified price. Keep the source and timestamp, and label it as unverified in the plan. |
+| `EXPERIENCE` | 「北门进人少」「索道排四十分钟」 | Usable as advice as written, attributed, with no verification step. |
+| `SEASONAL` | 「枫叶十一月中旬红」 | Usable for timing advice, attributed, and flagged when the trip sits near the stated edge. |
+
+Opening hours, ticket prices, train schedules and seat availability are never
+taken from a note. Those come from the venue, Amap, or 12306, whatever a note
+says.
+
+The distinction is not a way of discarding community knowledge — it is what
+lets all of it be used. A claim recorded as a hypothesis can shape the route
+without ever being presented to the traveller as a fact.
 
 Click "expand" when required. Scroll only enough to load the selected note and
 a small number of relevant visible comments.

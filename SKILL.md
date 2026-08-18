@@ -178,8 +178,17 @@ terminal prose with regular expressions.
 - Use Amap for normalized POIs, coordinates, and returned ground routes.
 - Label rail results `12306-community-mcp` and retain the connector version.
 - Label flight results with the exact OTA web channel and login state.
-- Treat Xiaohongshu as inspiration and experience evidence, not route or
-  opening-hours authority.
+- Research Xiaohongshu for route sequencing, price levels, queues, effort and
+  seasonal timing. Record every claim under one evidence class, which decides
+  how far it may travel:
+  - `ROUTE_HYPOTHESIS`: a candidate ordering only; Amap and the feasibility
+    checker settle it.
+  - `TRAVEL_TIME_HINT`: superseded by the routing provider on any conflict.
+  - `PRICE_SIGNAL`: an unverified market signal; never becomes a cost on its
+    own, and is labelled unverified wherever it appears.
+  - `EXPERIENCE`, `SEASONAL`: usable as written, attributed to the note.
+- Never take opening hours, ticket prices, schedules, or seat availability from
+  a note, whatever it says. Those come from the venue, Amap, or 12306.
 - Retain source URL, query time, channel, login state, and confidence.
 - Prefer official venue information when opening hours or rules conflict.
 - State missing evidence and reduce confidence instead of estimating facts.
