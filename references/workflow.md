@@ -110,7 +110,13 @@ Do not ask the OTA for prices until at least one route skeleton exists.
 2. Query direct availability with `query-tickets`.
 3. Query exact fares with `query-ticket-price`.
 4. Query transfers only when direct service is unsuitable.
-5. Keep the MCP source label and query timestamp.
+5. Normalize every payload with `normalize-rail` before reading any seat
+   value. Availability mixes integers with `有` and `无`, so comparing the raw
+   values is unsafe and `int()` raises on the words.
+6. Map a selected train into an **activity**, not a segment. The journey time
+   belongs to the ride itself; reaching the station is a separate segment
+   measured by the map provider.
+7. Keep the MCP source label and query timestamp.
 
 ### Flight branch
 
@@ -124,6 +130,11 @@ route skeleton identifies the required gateway city and time windows.
 5. Retain channel, login state, baggage visibility, and timestamp.
 6. Reject cheap offers that break downstream transfers.
 7. Never interpret a monthly-low-price page as the requested live fare.
+8. Run `validate-flights` before any offer influences a candidate. It rejects
+   a leg whose arrival precedes its departure, flags a stated duration that
+   disagrees with the clock, and requires the unguaranteed-price caveat.
+9. Map a selected flight into an **activity** carrying the check-in buffer,
+   120 minutes domestic and 180 international.
 
 ## Browser Phase Gate
 
@@ -204,6 +215,10 @@ Immediately before presentation:
 
 - Re-query shortlisted rail options.
 - Re-open or refresh shortlisted flight results.
+- Re-run `validate-flights` with the presentation time. `STALE_FLIGHT_PRICE`
+  means the offer must be looked up again, not relabelled: the default limit
+  is two hours, because a rail fare barely moves while an airfare from this
+  morning may already be wrong.
 - Re-run affected transfer checks if times or airports changed.
 - Mark a result stale when refresh fails.
 

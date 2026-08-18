@@ -27,8 +27,14 @@ python3 scripts/travel_planner.py validate-request --input examples/trip_request
 python3 scripts/travel_planner.py evaluate --input examples/itinerary.json
 python3 scripts/travel_planner.py normalize-rail --input examples/rail_query.json \
   --select --seat-class second_class
+python3 scripts/travel_planner.py validate-flights --input examples/final_plan.json \
+  --skip-freshness
 python3 scripts/travel_planner.py validate-plan --input examples/final_plan.json
 ```
+
+本机通常只装了一个 Python 版本，本地全绿**不等于**没问题。有些缺陷只在部分
+解释器上显现——例如 argparse 从 3.11 起才拒绝重复的子命令，3.9 和 3.10 是
+静默覆盖。推送后务必看一眼 CI 的多版本矩阵。
 
 测试当前覆盖：
 
@@ -45,6 +51,13 @@ python3 scripts/travel_planner.py validate-plan --input examples/final_plan.json
 - 12306 余票词表（`有` / `无` / 数字）归一化与排序
 - 车次映射为活动而非路段，且不编造 `query-tickets` 未返回的票价
 - 内容完整性：纯交通方案拒绝、缺少景点间路线拒绝
+- 机票记录：落地早于起飞判硬冲突；标注时长与起降时刻不符告警；价格过期仅在
+  传入时钟时判定，校验存档行程不会因时间流逝而失败；未保证价必须标注
+- 机票映射为活动并携带值机余量（国内 120 / 国际 180 分钟）
+- CLI 结构：没有子命令被注册两次。断言的是 `add_parser` 的调用记录，而非
+  解析器的结果——结果存在 dict 里，无法表达重复键，覆盖从外部不可见
+- CLI 接线：解析器接受的每个选项，其 handler 必须真的读取 `args.<dest>`。
+  匹配的是 `args.now` 而不是裸的 `now`，否则 `datetime.now` 会让断言平凡成立
 
 ## 安全发布
 

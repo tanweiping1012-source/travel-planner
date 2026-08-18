@@ -15,6 +15,13 @@ Commands:
 - `search-places`: query normalized Amap POIs.
 - `amap-snapshot`: collect locations, routes, and nearby places.
 - `compile-research`: merge normalized social notes into attraction cards.
+- `normalize-rail`: turn a 12306 `query-tickets` payload into comparable
+  records. Seat availability mixes integers with `有` and `无`, so raw values
+  must never be compared or passed to `int()`. Add `--select` to narrow to
+  usable candidates.
+- `validate-flights`: check browser-derived flight offers. Structural checks
+  always run; freshness is compared against `--now`, which defaults to the
+  current time, and `--skip-freshness` limits the run to structure alone.
 - `evaluate`: run deterministic time, route, budget, and opening-hour checks.
 - `validate-plan`: reject plans missing attraction content or source metadata.
 
