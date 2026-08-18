@@ -204,7 +204,10 @@ terminal prose with regular expressions.
 - Label rail results `12306-community-mcp` and retain the connector version.
 - Label flight results with the exact OTA web channel and login state.
 - Research Xiaohongshu for route sequencing, price levels, queues, effort and
-  seasonal timing. Record every claim under one evidence class, which decides
+  seasonal timing. **Read the carousel images, not only the text.** The note
+  body is often an introduction while the itinerary chart and the itemised
+  cost table are drawn into the last images; a note read as text alone has
+  been half read. Mark image-derived figures with `"extraction": "image"`. Record every claim under one evidence class, which decides
   how far it may travel:
   - `ROUTE_HYPOTHESIS`: a candidate ordering only; Amap and the feasibility
     checker settle it.

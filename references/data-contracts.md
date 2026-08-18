@@ -292,6 +292,13 @@ checker; a `TRAVEL_TIME_HINT` is superseded by the routing provider; a
 and never becomes `estimated_cost` on its own. `EXPERIENCE` and `SEASONAL`
 claims are usable as written, attributed to the note.
 
+A claim lifted from a note's images carries `"extraction": "image"` alongside
+its evidence class, plus the image index. Xiaohongshu notes routinely put the
+day-by-day chart and the itemised budget in the carousel and leave the text as
+an introduction, so image extraction is normal rather than exceptional — but a
+figure read from a table is still one traveller's receipt, and stays a
+`PRICE_SIGNAL`.
+
 Social notes are experience evidence, not authoritative facts. Validate every
 place name, coordinate, route, opening time, and price with a stronger source.
 

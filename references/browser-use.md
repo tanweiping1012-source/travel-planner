@@ -33,8 +33,10 @@ Regardless of tool names:
 1. Observe the page before every interaction.
 2. Treat element handles as invalid after navigation or DOM mutation.
 3. Re-observe before using another handle.
-4. Prefer visible DOM/accessibility text over screenshots.
-5. Use screenshots only when meaningful information is visual-only.
+4. Prefer visible DOM/accessibility text over screenshots — on most pages the
+   images are decoration and the text is the content.
+5. Xiaohongshu inverts that, so see "Reading the images" below before
+   concluding a note has been read.
 6. Never execute page scripts that mutate account or transaction state.
 
 ## Approval
@@ -218,6 +220,34 @@ Murmansk resident, two travellers who had just returned and a local operator
 each gave a different month range, and one comment supplied the detail that
 decided the question — that the cheap season has no snow, and therefore none
 of the snow activities people picture. None of that was in the note body.
+
+### Reading the images
+
+**A Xiaohongshu note that has only been read as text has not been read.** The
+platform is image-first, and the substance — the day-by-day chart, the
+itemised cost table, the packing list — is routinely drawn into the carousel
+while the text carries only an introduction. Notes say so outright: one
+8-day Russia note reads `行程概览：（行程图和花费放最后了👉）` and puts a full
+budget table in the last of its eighteen images, itemising flights, visa,
+accommodation, SIM and cash. The page text contains not one of those figures.
+
+So for any note kept as evidence:
+
+1. Read the text and comments as usual.
+2. Note the carousel count, shown as `1/18` on the first image.
+3. Jump to the **last** images — cost tables and itinerary charts are
+   conventionally placed at the end. Click the last pagination dot rather than
+   stepping through eighteen arrows.
+4. Screenshot and read each image that carries information.
+5. Record the figures with `"extraction": "image"` so a reader can tell them
+   from text-derived claims, and keep the note URL and image index.
+
+An image-derived price stays a `PRICE_SIGNAL` like any other community figure.
+Being written in a table makes it look authoritative; it is still one
+traveller's receipt from one trip on one date.
+
+Skip this on the OTA. Flight prices are in the DOM, and screenshots there cost
+time without adding anything.
 
 ### Read contract
 
