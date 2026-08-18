@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -608,6 +609,93 @@ class FeasibilityTest(unittest.TestCase):
         self.assertEqual(blocked["status"], "INFEASIBLE")
         self.assertEqual(risky["status"], "FEASIBLE_WITH_RISK")
         self.assertLess(blocked["score"], risky["score"])
+
+
+class CommandLineInterfaceTest(unittest.TestCase):
+    """The CLI is a script, so it is loaded by path rather than imported."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "travel_planner_cli", SKILL_ROOT / "scripts" / "travel_planner.py"
+        )
+        cls.cli = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.cli)
+
+    def subcommands(self):
+        parser = self.cli.build_parser()
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                return action.choices
+        raise AssertionError("no subparsers found")
+
+    def test_no_subcommand_is_registered_twice(self):
+        """Count registrations, not the resulting names.
+
+        A duplicate is silently overwritten on 3.9 and 3.10 and raises
+        ArgumentError from 3.11, so the same bug is invisible on one
+        interpreter and fatal on another. Inspecting the parser afterwards
+        cannot see it either — the names live in a dict, which cannot hold a
+        duplicate key — so the registration calls themselves are recorded.
+        """
+
+        registered = []
+        original = argparse._SubParsersAction.add_parser
+
+        def recording(action_self, name, **kwargs):
+            registered.append(name)
+            return original(action_self, name, **kwargs)
+
+        argparse._SubParsersAction.add_parser = recording
+        try:
+            self.cli.build_parser()
+        finally:
+            argparse._SubParsersAction.add_parser = original
+
+        duplicates = sorted(
+            {name for name in registered if registered.count(name) > 1}
+        )
+        self.assertEqual(duplicates, [], f"registered more than once: {duplicates}")
+
+    def test_every_subcommand_has_a_handler(self):
+        for name, sub in self.subcommands().items():
+            self.assertTrue(
+                callable(sub.get_default("func")), f"{name} has no handler"
+            )
+
+    def test_declared_options_reach_their_handler(self):
+        """A flag the parser accepts but the handler ignores fails silently."""
+
+        import inspect
+
+        for name, sub in self.subcommands().items():
+            source = inspect.getsource(sub.get_default("func"))
+            for action in sub._actions:
+                if action.dest in {"help", "output"} or not action.option_strings:
+                    continue
+                # Match args.<dest>, not the bare name: a dest such as "now"
+                # occurs as a substring of datetime.now and would pass on its
+                # own while the flag is in fact ignored.
+                self.assertIn(
+                    f"args.{action.dest}",
+                    source,
+                    f"{name} accepts --{action.dest.replace('_', '-')} "
+                    "but its handler never reads it",
+                )
+
+    def test_validate_flights_accepts_an_explicit_clock(self):
+        parser = self.cli.build_parser()
+        args = parser.parse_args(
+            ["validate-flights", "--input", "x.json", "--now", "2026-08-18T15:00:00+08:00"]
+        )
+        self.assertEqual(args.now, "2026-08-18T15:00:00+08:00")
+        self.assertFalse(args.skip_freshness)
+
+    def test_naive_clock_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "timezone offset"):
+            self.cli._parse_datetime("2026-08-18T15:00:00")
 
 
 class FlightOfferTest(unittest.TestCase):

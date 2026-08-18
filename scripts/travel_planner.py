@@ -137,16 +137,6 @@ def command_normalize_rail(args: argparse.Namespace) -> None:
 def command_validate_flights(args: argparse.Namespace) -> None:
     payload = _read_json(args.input)
     offers = payload if isinstance(payload, list) else payload.get("flight_offers") or []
-    now = None if args.skip_freshness else datetime.now(timezone.utc)
-    report = validate_offers(offers, now=now, max_age_hours=args.max_age_hours)
-    _emit(report, args.output)
-    if report["status"] == "INVALID":
-        raise SystemExit(2)
-
-
-def command_validate_flights(args: argparse.Namespace) -> None:
-    payload = _read_json(args.input)
-    offers = payload if isinstance(payload, list) else payload.get("flight_offers") or []
     now = None if args.skip_freshness else (
         _parse_datetime(args.now) if args.now else datetime.now(timezone.utc)
     )
@@ -266,6 +256,10 @@ def build_parser() -> argparse.ArgumentParser:
     validate_flights.add_argument("--input", required=True)
     validate_flights.add_argument("--output")
     validate_flights.add_argument(
+        "--now",
+        help="ISO timestamp with offset to check freshness against (default: now)",
+    )
+    validate_flights.add_argument(
         "--max-age-hours", type=int, default=DEFAULT_MAX_AGE_HOURS,
         dest="max_age_hours",
         help="Age above which a fare must be looked up again (default: 2)",
@@ -273,26 +267,6 @@ def build_parser() -> argparse.ArgumentParser:
     validate_flights.add_argument(
         "--skip-freshness", action="store_true", dest="skip_freshness",
         help="Run structural checks only, without comparing against the clock",
-    )
-    validate_flights.set_defaults(func=command_validate_flights)
-
-    validate_flights = subparsers.add_parser(
-        "validate-flights",
-        help="Check browser-derived flight offers, including price freshness",
-    )
-    validate_flights.add_argument("--input", required=True)
-    validate_flights.add_argument("--output")
-    validate_flights.add_argument(
-        "--now", help="ISO timestamp to check freshness against (default: now)"
-    )
-    validate_flights.add_argument(
-        "--max-age-hours", type=int, default=2, dest="max_age_hours"
-    )
-    validate_flights.add_argument(
-        "--skip-freshness",
-        action="store_true",
-        dest="skip_freshness",
-        help="Run structural checks only",
     )
     validate_flights.set_defaults(func=command_validate_flights)
 
