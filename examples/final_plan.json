@@ -33,10 +33,32 @@
   "segments": [],
   "flight_offers": [
     {
+      "mode": "flight",
+      "offer_id": "ctrip-web-result-1",
+      "outbound": {
+        "carrier": "示例航空",
+        "flight_number": "EX1234",
+        "origin_airport": "CAN",
+        "destination_airport": "KWL",
+        "departure": "2026-10-01T07:50:00+08:00",
+        "arrival": "2026-10-01T09:10:00+08:00",
+        "duration_minutes": 80,
+        "stops": 0
+      },
+      "return": null,
       "displayed_total_price": 1600,
+      "currency": "CNY",
+      "baggage_visibility": "CHECKED_20KG",
+      "final_price_guaranteed": false,
       "source": {
+        "provider": "ctrip",
+        "connector": "browser-adapter",
+        "connector_type": "browser",
         "channel": "ctrip_web",
-        "checked_at": "2026-08-10T19:00:00+08:00"
+        "login_state": "PUBLIC_READY",
+        "page_visible_only": true,
+        "checked_at": "2026-08-10T19:00:00+08:00",
+        "url": "https://flights.ctrip.com/..."
       }
     }
   ],

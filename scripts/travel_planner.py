@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +20,11 @@ from travel_planner.credentials import (  # noqa: E402
 )
 from travel_planner.diagnostics import build_doctor_report  # noqa: E402
 from travel_planner.feasibility import evaluate_itinerary  # noqa: E402
+from travel_planner.flight import validate_offers  # noqa: E402
+from travel_planner.flight import (  # noqa: E402
+    DEFAULT_MAX_AGE_HOURS,
+    validate_offers,
+)
 from travel_planner.intake import validate_trip_request  # noqa: E402
 from travel_planner.models import to_dict  # noqa: E402
 from travel_planner.rail import (  # noqa: E402
@@ -29,6 +36,13 @@ from travel_planner.research import (  # noqa: E402
     validate_plan_content,
 )
 from travel_planner.workflow import collect_amap_snapshot  # noqa: E402
+
+
+def _parse_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("--now must include a timezone offset")
+    return parsed
 
 
 def _read_json(path: str) -> dict:
@@ -118,6 +132,28 @@ def command_normalize_rail(args: argparse.Namespace) -> None:
         )
         report["count"] = len(report["trains"])
     _emit(report, args.output)
+
+
+def command_validate_flights(args: argparse.Namespace) -> None:
+    payload = _read_json(args.input)
+    offers = payload if isinstance(payload, list) else payload.get("flight_offers") or []
+    now = None if args.skip_freshness else datetime.now(timezone.utc)
+    report = validate_offers(offers, now=now, max_age_hours=args.max_age_hours)
+    _emit(report, args.output)
+    if report["status"] == "INVALID":
+        raise SystemExit(2)
+
+
+def command_validate_flights(args: argparse.Namespace) -> None:
+    payload = _read_json(args.input)
+    offers = payload if isinstance(payload, list) else payload.get("flight_offers") or []
+    now = None if args.skip_freshness else (
+        _parse_datetime(args.now) if args.now else datetime.now(timezone.utc)
+    )
+    report = validate_offers(offers, now=now, max_age_hours=args.max_age_hours)
+    _emit(report, args.output)
+    if report["status"] == "INVALID":
+        raise SystemExit(2)
 
 
 def command_validate_plan(args: argparse.Namespace) -> None:
@@ -222,6 +258,43 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-sold-out", action="store_true", dest="include_sold_out"
     )
     normalize_rail.set_defaults(func=command_normalize_rail)
+
+    validate_flights = subparsers.add_parser(
+        "validate-flights",
+        help="Check browser-derived flight offers, including price freshness",
+    )
+    validate_flights.add_argument("--input", required=True)
+    validate_flights.add_argument("--output")
+    validate_flights.add_argument(
+        "--max-age-hours", type=int, default=DEFAULT_MAX_AGE_HOURS,
+        dest="max_age_hours",
+        help="Age above which a fare must be looked up again (default: 2)",
+    )
+    validate_flights.add_argument(
+        "--skip-freshness", action="store_true", dest="skip_freshness",
+        help="Run structural checks only, without comparing against the clock",
+    )
+    validate_flights.set_defaults(func=command_validate_flights)
+
+    validate_flights = subparsers.add_parser(
+        "validate-flights",
+        help="Check browser-derived flight offers, including price freshness",
+    )
+    validate_flights.add_argument("--input", required=True)
+    validate_flights.add_argument("--output")
+    validate_flights.add_argument(
+        "--now", help="ISO timestamp to check freshness against (default: now)"
+    )
+    validate_flights.add_argument(
+        "--max-age-hours", type=int, default=2, dest="max_age_hours"
+    )
+    validate_flights.add_argument(
+        "--skip-freshness",
+        action="store_true",
+        dest="skip_freshness",
+        help="Run structural checks only",
+    )
+    validate_flights.set_defaults(func=command_validate_flights)
 
     validate_plan = subparsers.add_parser(
         "validate-plan",

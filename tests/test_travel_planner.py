@@ -5,7 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -20,6 +20,11 @@ from travel_planner.diagnostics import (
     detect_client,
 )
 from travel_planner.feasibility import evaluate_itinerary
+from travel_planner.flight import (
+    FlightDataError,
+    offer_to_activity,
+    validate_offers,
+)
 from travel_planner.intake import validate_trip_request
 from travel_planner.rail import (
     RailDataError,
@@ -603,6 +608,180 @@ class FeasibilityTest(unittest.TestCase):
         self.assertEqual(blocked["status"], "INFEASIBLE")
         self.assertEqual(risky["status"], "FEASIBLE_WITH_RISK")
         self.assertLess(blocked["score"], risky["score"])
+
+
+class FlightOfferTest(unittest.TestCase):
+    def offer(self, **overrides):
+        offer = {
+            "offer_id": "ctrip-1",
+            "mode": "flight",
+            "outbound": {
+                "carrier": "示例航空",
+                "flight_number": "EX1234",
+                "origin_airport": "CAN",
+                "destination_airport": "KWL",
+                "departure": "2026-10-01T07:50:00+08:00",
+                "arrival": "2026-10-01T09:10:00+08:00",
+                "duration_minutes": 80,
+                "stops": 0,
+            },
+            "displayed_total_price": 620,
+            "currency": "CNY",
+            "baggage_visibility": "CHECKED_20KG",
+            "final_price_guaranteed": False,
+            "source": {
+                "channel": "ctrip_web",
+                "checked_at": "2026-10-01T06:00:00+08:00",
+            },
+        }
+        offer.update(overrides)
+        return offer
+
+    def test_freshness_is_skipped_without_a_clock(self):
+        """A stored plan is not necessarily a plan being presented."""
+
+        report = validate_offers([self.offer()])
+        self.assertFalse(report["summary"]["freshness_checked"])
+        codes = {issue["code"] for issue in report["warnings"]}
+        self.assertNotIn("STALE_FLIGHT_PRICE", codes)
+
+    def test_stale_price_is_flagged_when_a_clock_is_given(self):
+        report = validate_offers(
+            [self.offer()],
+            now=datetime(2026, 10, 1, 12, 0, tzinfo=timezone(timedelta(hours=8))),
+        )
+        stale = [i for i in report["warnings"] if i["code"] == "STALE_FLIGHT_PRICE"]
+        self.assertEqual(len(stale), 1)
+        self.assertEqual(stale[0]["details"]["age_hours"], 6.0)
+
+    def test_fresh_price_within_the_window_passes(self):
+        report = validate_offers(
+            [self.offer()],
+            now=datetime(2026, 10, 1, 7, 0, tzinfo=timezone(timedelta(hours=8))),
+        )
+        codes = {issue["code"] for issue in report["warnings"]}
+        self.assertNotIn("STALE_FLIGHT_PRICE", codes)
+
+    def test_unguaranteed_price_must_be_surfaced(self):
+        report = validate_offers([self.offer()])
+        codes = {issue["code"] for issue in report["warnings"]}
+        self.assertIn("PRICE_NOT_GUARANTEED", codes)
+
+    def test_duration_inconsistent_with_the_clock_is_flagged(self):
+        offer = self.offer()
+        offer["outbound"]["duration_minutes"] = 200
+        report = validate_offers([offer])
+        mismatch = [i for i in report["warnings"] if i["code"] == "DURATION_MISMATCH"]
+        self.assertEqual(mismatch[0]["details"], {"stated": 200, "implied": 80})
+
+    def test_small_duration_difference_is_tolerated(self):
+        offer = self.offer()
+        offer["outbound"]["duration_minutes"] = 83
+        report = validate_offers([offer])
+        codes = {issue["code"] for issue in report["warnings"]}
+        self.assertNotIn("DURATION_MISMATCH", codes)
+
+    def test_arrival_before_departure_is_a_hard_conflict(self):
+        offer = self.offer()
+        offer["outbound"]["arrival"] = "2026-10-01T07:00:00+08:00"
+        report = validate_offers([offer])
+        self.assertEqual(report["status"], "INVALID")
+        self.assertEqual(
+            report["hard_conflicts"][0]["code"], "ARRIVAL_BEFORE_DEPARTURE"
+        )
+
+    def test_missing_channel_or_timestamp_is_a_hard_conflict(self):
+        report = validate_offers([self.offer(source={"channel": "ctrip_web"})])
+        self.assertEqual(report["status"], "INVALID")
+        self.assertEqual(
+            report["hard_conflicts"][0]["code"], "MISSING_SOURCE_METADATA"
+        )
+
+    def test_unparseable_leg_does_not_crash_the_run(self):
+        offer = self.offer()
+        offer["outbound"]["departure"] = "明天早上"
+        report = validate_offers([offer])
+        self.assertEqual(report["hard_conflicts"][0]["code"], "INVALID_FLIGHT_LEG")
+
+    def test_return_leg_is_checked_too(self):
+        offer = self.offer()
+        offer["return"] = {
+            "flight_number": "EX1235",
+            "origin_airport": "KWL",
+            "destination_airport": "CAN",
+            "departure": "2026-10-05T20:00:00+08:00",
+            "arrival": "2026-10-05T19:00:00+08:00",
+        }
+        report = validate_offers([offer])
+        self.assertEqual(report["summary"]["leg_count"], 2)
+        self.assertEqual(
+            report["hard_conflicts"][0]["code"], "ARRIVAL_BEFORE_DEPARTURE"
+        )
+
+    def test_activity_carries_the_gate_buffer_and_price_provenance(self):
+        activity = offer_to_activity(self.offer(), activity_id="fl-1")
+        self.assertEqual(activity["type"], "FLIGHT_DOMESTIC")
+        self.assertEqual(activity["required_buffer_minutes"], 120)
+        self.assertEqual(activity["estimated_cost"], 620.0)
+        self.assertFalse(activity["price_is_final"])
+        self.assertEqual(activity["source_checked_at"], "2026-10-01T06:00:00+08:00")
+
+    def test_international_activity_uses_the_longer_buffer(self):
+        activity = offer_to_activity(self.offer(), international=True)
+        self.assertEqual(activity["type"], "FLIGHT_INTERNATIONAL")
+        self.assertEqual(activity["required_buffer_minutes"], 180)
+
+    def test_activity_requires_the_requested_leg(self):
+        with self.assertRaises(FlightDataError):
+            offer_to_activity(self.offer(), leg="return")
+
+    def test_activity_feeds_the_feasibility_checker(self):
+        """A flight is an activity; reaching the airport is the segment."""
+
+        activity = offer_to_activity(self.offer(), activity_id="flight")
+        report = evaluate_itinerary(
+            {
+                "timezone": "Asia/Shanghai",
+                "activities": [
+                    {
+                        "id": "hotel",
+                        "name": "酒店退房",
+                        "start": "2026-10-01T04:30:00+08:00",
+                        "end": "2026-10-01T05:00:00+08:00",
+                    },
+                    activity,
+                ],
+                "segments": [
+                    {"from_id": "hotel", "to_id": "flight", "duration_minutes": 45}
+                ],
+            }
+        )
+        self.assertEqual(report["status"], "FEASIBLE")
+
+    def test_late_hotel_checkout_misses_the_gate(self):
+        activity = offer_to_activity(self.offer(), activity_id="flight")
+        report = evaluate_itinerary(
+            {
+                "timezone": "Asia/Shanghai",
+                "activities": [
+                    {
+                        "id": "hotel",
+                        "name": "酒店退房",
+                        "start": "2026-10-01T05:00:00+08:00",
+                        "end": "2026-10-01T06:30:00+08:00",
+                    },
+                    activity,
+                ],
+                "segments": [
+                    {"from_id": "hotel", "to_id": "flight", "duration_minutes": 45}
+                ],
+            }
+        )
+        # 80 minutes available, but 45 travel + 120 gate buffer are required.
+        self.assertEqual(report["status"], "INFEASIBLE")
+        self.assertEqual(
+            report["hard_conflicts"][0]["code"], "INSUFFICIENT_TRANSFER_TIME"
+        )
 
 
 class RailNormalizationTest(unittest.TestCase):

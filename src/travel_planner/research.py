@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List
 
+from travel_planner.flight import validate_offers
+
 
 def _strings(value: Any) -> List[str]:
     if not isinstance(value, list):
@@ -229,10 +231,11 @@ def validate_plan_content(plan: Dict[str, Any]) -> dict:
         if (from_id, to_id) not in segment_pairs:
             errors.append(f"Missing transition segment: {from_id} -> {to_id}")
 
-    for offer in plan.get("flight_offers") or []:
-        source = offer.get("source") or {}
-        if not source.get("channel") or not source.get("checked_at"):
-            errors.append("Browser-derived flight offer lacks channel or timestamp")
+    # Structural checks only: a stored plan is not necessarily one being
+    # presented, so freshness is left to validate-flights, which takes a clock.
+    flight_report = validate_offers(plan.get("flight_offers") or [])
+    errors.extend(issue["message"] for issue in flight_report["hard_conflicts"])
+    warnings.extend(issue["message"] for issue in flight_report["warnings"])
 
     return {
         "status": "VALID" if not errors else "INVALID",

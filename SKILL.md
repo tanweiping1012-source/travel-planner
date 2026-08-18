@@ -143,6 +143,17 @@ Seat availability mixes integers with `有` and `无`, so never compare the raw
 values. A train ride becomes an *activity*; the ride to the station is a
 separate segment whose duration comes from Amap.
 
+Check browser-derived flight offers before presenting a plan:
+
+```bash
+python3 "$SKILL_ROOT/scripts/travel_planner.py" \
+  validate-flights --input /absolute/path/to/final_plan.json
+```
+
+A displayed web price is not a payable price, and an airfare goes stale within
+hours. Run this immediately before presentation; `STALE_FLIGHT_PRICE` means the
+offer must be re-queried, not merely re-labelled.
+
 Evaluate an itinerary:
 
 ```bash

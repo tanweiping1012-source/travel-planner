@@ -500,3 +500,48 @@ query-tickets ──▶ normalize-rail ──▶ train_to_activity ──▶ eva
 query-ticket-price ────┘                 route matrix ───────┘
                     (fare)                  (segment)
 ```
+
+## Flight Offer Validation
+
+Flights are the only source here with no usable API, so an offer is whatever an
+OTA page showed at one moment. `validate-flights` checks what that implies.
+
+### Freshness is conditional
+
+Rail fares barely move; airfares can change within hours. Every offer therefore
+carries `source.checked_at`, and the default staleness limit is **2 hours**.
+
+Freshness is only evaluated when a clock is supplied. `validate-plan` runs the
+structural checks alone, because a stored plan is not necessarily a plan being
+presented; `validate-flights` takes `--now` (defaulting to the current time)
+and is the gate to run immediately before showing a plan.
+
+```bash
+travel_planner.py validate-flights --input plan.json            # uses now
+travel_planner.py validate-flights --input plan.json --skip-freshness
+```
+
+### Checks
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `MISSING_SOURCE_METADATA` | HARD | No channel or no `checked_at` |
+| `ARRIVAL_BEFORE_DEPARTURE` | HARD | The leg's clock is impossible |
+| `INVALID_FLIGHT_LEG` | HARD | The leg could not be parsed |
+| `STALE_FLIGHT_PRICE` | WARNING | Older than the age limit; re-query |
+| `DURATION_MISMATCH` | WARNING | Stated duration disagrees with the clock by more than 5 minutes |
+| `PRICE_NOT_GUARANTEED` | WARNING | `final_price_guaranteed` is not true |
+| `MISSING_PRICE` | WARNING | No visible price was captured |
+| `BAGGAGE_UNKNOWN` | WARNING | The page did not show a baggage allowance |
+
+A displayed web price is never a payable price. `PRICE_NOT_GUARANTEED` is
+expected on nearly every offer, and the plan must carry that caveat rather than
+presenting the number as settled.
+
+### A flight is an activity
+
+As with rail, the flight is an **activity** whose `start` and `end` are the
+departure and arrival, carrying `required_buffer_minutes` for check-in and
+security — 120 domestic, 180 international, matching the FLIGHT defaults in the
+feasibility checker. Reaching the airport is a **separate segment** whose
+duration comes from a routing provider.
