@@ -58,6 +58,20 @@ python3 scripts/travel_planner.py validate-plan --input examples/final_plan.json
   解析器的结果——结果存在 dict 里，无法表达重复键，覆盖从外部不可见
 - CLI 接线：解析器接受的每个选项，其 handler 必须真的读取 `args.<dest>`。
   匹配的是 `args.now` 而不是裸的 `now`，否则 `datetime.now` 会让断言平凡成立
+- 时间守卫：`evaluate` 与 `validate-flights` 收到不带时区的 `now` 时报出
+  可执行的 `ValueError`，而不是从减法内部抛出的 `TypeError`；`Z` 后缀在
+  3.9 上也能解析（`fromisoformat` 到 3.11 才原生支持）
+
+### 时间处理集中在一处
+
+任何需要比较时刻的地方都走 `travel_planner.timeutil`：`parse_datetime`
+要求字符串带 UTC 偏移，`require_aware` 拦住调用方传进来的裸时钟。
+
+不要在模块里另写一份解析器。`feasibility` 和 `flight` 曾各自复制过一份，
+结果是同一个缺陷要修两次，而且只在其中一处被发现。
+
+也不要给缺失的时区**猜**一个默认值。营业时间误报就是这么来的：代码把
+UTC 时间戳当成了当地墙上时间。宁可报错说清楚，也不要静默假设。
 
 ## 安全发布
 

@@ -19,6 +19,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from travel_planner.timeutil import parse_datetime as _parse_datetime
+from travel_planner.timeutil import require_aware
+
 #: Airfares move on their own; anything older than this needs a refresh.
 DEFAULT_MAX_AGE_HOURS = 2
 
@@ -51,13 +54,6 @@ def _issue(
         "offer_id": offer_id,
         "details": details or {},
     }
-
-
-def _parse_datetime(value: Any) -> datetime:
-    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        raise ValueError("datetime values must include a timezone offset")
-    return parsed
 
 
 def normalize_leg(leg: Dict[str, Any], label: str) -> Dict[str, Any]:
@@ -97,6 +93,9 @@ def validate_offers(
     supplied, so validating a stored plan does not fail merely because time
     has passed since it was written.
     """
+
+    if now is not None:
+        require_aware(now)
 
     hard_conflicts: List[dict] = []
     warnings: List[dict] = []
@@ -254,7 +253,13 @@ def offer_to_activity(
     raw_leg = offer.get(leg)
     if raw_leg is None:
         raise FlightDataError(f"机票记录缺少 {leg} 航段")
-    normalized = normalize_leg(raw_leg, leg)
+    try:
+        normalized = normalize_leg(raw_leg, leg)
+    except (KeyError, TypeError, ValueError) as exc:
+        # A missing departure or arrival must surface as this module's own
+        # error; a bare KeyError is not a ValueError and would escape the
+        # CLI's handler as an unhandled traceback.
+        raise FlightDataError(f"{LEG_LABELS.get(leg, leg)}航段无法解析：{exc}") from exc
 
     flight_number = normalized["flight_number"] or "flight"
     activity: Dict[str, Any] = {

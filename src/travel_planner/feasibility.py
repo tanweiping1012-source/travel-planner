@@ -6,6 +6,9 @@ from collections import defaultdict
 from datetime import datetime, time, timedelta, timezone
 from typing import Any, Dict, List, NamedTuple, Optional
 
+from travel_planner.timeutil import parse_datetime as _parse_datetime
+from travel_planner.timeutil import require_aware
+
 try:  # pragma: no cover - depends on the platform tz database
     from zoneinfo import ZoneInfo
 except ImportError:  # pragma: no cover
@@ -24,14 +27,6 @@ class _Entry(NamedTuple):
     local_start: datetime
     local_end: datetime
     zone_declared: bool
-
-
-def _parse_datetime(value: str) -> datetime:
-    normalized = value.replace("Z", "+00:00")
-    parsed = datetime.fromisoformat(normalized)
-    if parsed.tzinfo is None:
-        raise ValueError("datetime values must include a timezone offset")
-    return parsed
 
 
 def _parse_clock(value: Any) -> Optional[time]:
@@ -118,7 +113,7 @@ def _score(hard_conflicts: List[dict], warnings: List[dict]) -> int:
 def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None) -> dict:
     """Evaluate a normalized itinerary and return deterministic issues and a score."""
 
-    now = now or datetime.now(timezone.utc)
+    now = require_aware(now) if now is not None else datetime.now(timezone.utc)
     constraints = itinerary.get("constraints") or {}
     activities = list(itinerary.get("activities") or [])
     segments = list(itinerary.get("segments") or [])

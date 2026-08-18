@@ -39,6 +39,7 @@ from travel_planner.rail import (
     train_to_activity,
 )
 from travel_planner.research import compile_destination_brief, validate_plan_content
+from travel_planner.timeutil import parse_datetime, require_aware
 
 
 class FakeAmapTransport:
@@ -991,6 +992,17 @@ class RailNormalizationTest(unittest.TestCase):
         picks = select_trains(normalize_query_result(payload)["trains"])
         self.assertEqual([t["train_no"] for t in picks], ["fast", "slow"])
 
+    def test_malformed_leg_raises_this_module_s_error_not_keyerror(self):
+        """A bare KeyError is not a ValueError and escapes the CLI handler."""
+
+        for broken in (
+            {"outbound": {"departure": "2026-09-01T08:00:00+08:00"}},
+            {"outbound": {"flight_number": "MU123"}},
+            {"outbound": "not-a-dict"},
+        ):
+            with self.assertRaises(FlightDataError):
+                offer_to_activity(broken)
+
     def test_activity_omits_price_when_none_was_looked_up(self):
         """query-tickets carries no fare, so none may be invented."""
 
@@ -1084,6 +1096,50 @@ class RailNormalizationTest(unittest.TestCase):
         self.assertIn("商务座 9", text)
         self.assertIn("一等座 充足", text)
         self.assertIn("无座 无", text)
+
+
+class TimeUtilTest(unittest.TestCase):
+    def test_naive_clock_is_rejected_with_the_fix_in_the_message(self):
+        """datetime.now() is the obvious call and returns a naive value."""
+
+        with self.assertRaises(ValueError) as context:
+            require_aware(datetime(2026, 8, 18, 15, 0, 0))
+        message = str(context.exception)
+        self.assertIn("timezone-aware", message)
+        self.assertIn("datetime.now(timezone.utc)", message)
+
+    def test_non_datetime_clock_is_rejected(self):
+        with self.assertRaises(ValueError):
+            require_aware("2026-08-18T15:00:00+08:00")
+
+    def test_aware_clock_passes_through_unchanged(self):
+        moment = datetime(2026, 8, 18, 15, 0, 0, tzinfo=timezone.utc)
+        self.assertIs(require_aware(moment), moment)
+
+    def test_z_suffix_is_accepted_on_every_supported_python(self):
+        """fromisoformat only learned Z in 3.11; this code supports 3.9."""
+
+        self.assertEqual(
+            parse_datetime("2026-08-18T07:00:00Z"),
+            datetime(2026, 8, 18, 7, 0, 0, tzinfo=timezone.utc),
+        )
+
+    def test_offsetless_value_names_the_field(self):
+        with self.assertRaises(ValueError) as context:
+            parse_datetime("2026-08-18T15:00:00", field="checked_at")
+        self.assertIn("checked_at", str(context.exception))
+
+    def test_both_engines_reject_a_naive_clock(self):
+        """A confusing TypeError from inside a subtraction is not an answer."""
+
+        for call in (
+            lambda: evaluate_itinerary(
+                {"activities": [], "segments": []}, now=datetime(2026, 8, 18, 15)
+            ),
+            lambda: validate_offers([], now=datetime(2026, 8, 18, 15)),
+        ):
+            with self.assertRaises(ValueError):
+                call()
 
 
 class IntakeValidationTest(unittest.TestCase):
