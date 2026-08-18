@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List
 
 from travel_planner.flight import validate_offers
+from travel_planner.lodging import validate_offers as validate_lodging_offers
 
 
 def _strings(value: Any) -> List[str]:
@@ -254,6 +255,13 @@ def validate_plan_content(plan: Dict[str, Any]) -> dict:
     flight_report = validate_offers(plan.get("flight_offers") or [])
     errors.extend(issue["message"] for issue in flight_report["hard_conflicts"])
     warnings.extend(issue["message"] for issue in flight_report["warnings"])
+
+    # Same reasoning as flights: structural only, freshness needs a clock.
+    # A signed-out quote or a card price read as a stay total is a plan defect
+    # regardless of when the plan is being read, so it belongs here.
+    lodging_report = validate_lodging_offers(plan.get("lodging_offers") or [])
+    errors.extend(issue["message"] for issue in lodging_report["hard_conflicts"])
+    warnings.extend(issue["message"] for issue in lodging_report["warnings"])
 
     unavailable = [
         entry

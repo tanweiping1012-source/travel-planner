@@ -22,8 +22,18 @@ Commands:
 - `validate-flights`: check browser-derived flight offers. Structural checks
   always run; freshness is compared against `--now`, which defaults to the
   current time, and `--skip-freshness` limits the run to structure alone.
+- `validate-lodging`: check browser-derived hotel offers and derive the stay
+  total from the per-night card price, nights, and `--rooms`. Requires
+  `login_state` on every offer — Ctrip shows no room price to a signed-out
+  visitor, so an offer without it cannot be genuine — and flags offers
+  gathered under different login states or membership tiers as not
+  comparable. Same `--now` / `--skip-freshness` freshness contract as
+  `validate-flights`, with a 12-hour default window.
 - `evaluate`: run deterministic time, route, budget, and opening-hour checks.
 - `validate-plan`: reject plans missing attraction content or source metadata.
+  Runs `validate-flights` and `validate-lodging` internally on any
+  `flight_offers` / `lodging_offers` present, so a plan with a broken quote
+  fails here even if nothing else in the plan references it.
 
 ### `scripts/setup_amap_key.sh`
 
@@ -66,6 +76,7 @@ destination_brief.json
 route_skeletons.json
 rail_options.json
 flight_offers.json
+lodging_offers.json
 candidate_plans.json
 feasibility_reports.json
 final_plan.json

@@ -118,10 +118,19 @@ Login walls do not announce themselves as errors. Detect them from the page:
 | Site | Anonymous behaviour, measured | Marker |
 |---|---|---|
 | Xiaohongshu search | **Zero results.** Not partial coverage — nothing. | `登录后查看搜索结果` |
-| Ctrip international flights | Fully readable. No login, no CAPTCHA. | — |
+| Ctrip flights | Fully readable. No login, no CAPTCHA. | — |
+| Ctrip hotels | **No room prices.** The list redirects to sign-in. | redirect to `passport.ctrip.com` |
 
-Ask for a login only where one is actually needed. Ctrip needs none, so
-requesting one there spends the user's attention for nothing.
+Ask for a login only where one is actually needed: it is needed for
+Xiaohongshu and for hotels, and not for flights. One site is not evidence
+about another, and neither is one page about the same site — flights and
+hotels sit on the same domain and behave differently.
+
+Beware of confirming the wrong thing. A hotel page read *after* the user has
+signed in shows prices and a membership greeting, which looks like proof that
+anonymous access works. It is proof of the opposite: the greeting is the
+tell that the session is authenticated. Check the login state before
+concluding anything about what anonymous visitors can see.
 
 ## OTA Flight Research
 
@@ -220,6 +229,36 @@ Murmansk resident, two travellers who had just returned and a local operator
 each gave a different month range, and one comment supplied the detail that
 decided the question — that the cheap season has no snow, and therefore none
 of the snow activities people picture. None of that was in the note body.
+
+### Hotels
+
+Room prices need a signed-in session, so a lodging phase begins with the same
+handoff as Xiaohongshu. Do not try an anonymous search first to see whether it
+works — it does not. An anonymous hotel list request redirects to a login page
+and shows no price at all, not a thin one.
+
+Confirm the login state from the page rather than assuming it from a prior
+phase or a prior session: a browser context can already be signed in from
+earlier work, and a page that renders correctly proves nothing about which
+state produced it. A membership badge in the page chrome (a tier name, a
+"welcome back") is evidence the session is authenticated; its absence is not
+evidence that it is not.
+
+Two properties of the data follow from that, and both are enforced by
+`validate-lodging`:
+
+- **The price depends on who is looking.** The same room listed at 609 sells
+  to a diamond member for 479. Record `login_state` and `member_tier` with
+  every quote; two quotes gathered under different states cannot be ranked
+  against each other, and the checker says so rather than sorting them.
+- **The number on the card is per night, for the cheapest room.** `¥556 起`
+  is not the cost of a six-night stay. Record `price_basis` and let the tool
+  derive the total; reading the card figure as a stay total understates a week
+  of accommodation six-fold.
+
+City selection is by numeric id, not by name — a keyword parameter is ignored
+and silently returns another city's hotels, so confirm the city shown on the
+page before trusting a single price.
 
 ### Reading the images
 

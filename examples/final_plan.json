@@ -62,6 +62,30 @@
       }
     }
   ],
+  "lodging_offers": [
+    {
+      "offer_id": "ctrip-hotel-result-1",
+      "name": "示例阳朔滨江酒店",
+      "city": "阳朔",
+      "room_type": "标准大床房",
+      "check_in": "2027-04-11",
+      "check_out": "2027-04-13",
+      "displayed_price": 328,
+      "price_basis": "PER_NIGHT",
+      "free_cancellation": true,
+      "rating": 4.6,
+      "source": {
+        "provider": "ctrip",
+        "connector": "browser-adapter",
+        "connector_type": "browser",
+        "channel": "ctrip_hotel_web",
+        "login_state": "CONNECTED",
+        "member_tier": "钻石贵宾",
+        "checked_at": "2026-08-10T19:00:00+08:00",
+        "url": "https://hotels.ctrip.com/..."
+      }
+    }
+  ],
   "sources": [
     {
       "id": "xhs-note-1",

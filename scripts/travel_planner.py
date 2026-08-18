@@ -26,6 +26,7 @@ from travel_planner.flight import (  # noqa: E402
     validate_offers,
 )
 from travel_planner.intake import validate_trip_request  # noqa: E402
+from travel_planner.lodging import validate_offers as validate_lodging  # noqa: E402
 from travel_planner.models import to_dict  # noqa: E402
 from travel_planner.rail import (  # noqa: E402
     normalize_query_result,
@@ -141,6 +142,20 @@ def command_validate_flights(args: argparse.Namespace) -> None:
         _parse_datetime(args.now) if args.now else datetime.now(timezone.utc)
     )
     report = validate_offers(offers, now=now, max_age_hours=args.max_age_hours)
+    _emit(report, args.output)
+    if report["status"] == "INVALID":
+        raise SystemExit(2)
+
+
+def command_validate_lodging(args: argparse.Namespace) -> None:
+    payload = _read_json(args.input)
+    offers = payload if isinstance(payload, list) else payload.get("lodging_offers") or []
+    now = None if args.skip_freshness else (
+        _parse_datetime(args.now) if args.now else datetime.now(timezone.utc)
+    )
+    report = validate_lodging(
+        offers, now=now, max_age_hours=args.max_age_hours, rooms=args.rooms
+    )
     _emit(report, args.output)
     if report["status"] == "INVALID":
         raise SystemExit(2)
@@ -273,6 +288,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run structural checks only, without comparing against the clock",
     )
     validate_flights.set_defaults(func=command_validate_flights)
+
+    validate_lodging_parser = subparsers.add_parser(
+        "validate-lodging",
+        help="Check browser-derived lodging offers and derive stay totals",
+    )
+    validate_lodging_parser.add_argument("--input", required=True)
+    validate_lodging_parser.add_argument("--output")
+    validate_lodging_parser.add_argument("--rooms", type=int, default=1)
+    validate_lodging_parser.add_argument(
+        "--max-age-hours", type=int, default=12, dest="max_age_hours"
+    )
+    validate_lodging_parser.add_argument("--now")
+    validate_lodging_parser.add_argument(
+        "--skip-freshness", action="store_true", dest="skip_freshness"
+    )
+    validate_lodging_parser.set_defaults(func=command_validate_lodging)
 
     validate_plan = subparsers.add_parser(
         "validate-plan",

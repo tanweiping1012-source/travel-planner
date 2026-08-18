@@ -112,8 +112,10 @@ Degrade safely when optional capabilities are missing:
    Hand off by blocking on the client's question tool, not by mentioning login
    in prose, and re-read the page afterwards — a login wall read as an empty
    result looks exactly like a destination with no coverage. Xiaohongshu search
-   returns nothing at all while signed out; Ctrip needs no login, so do not ask
-   for one there.
+   returns nothing at all while signed out, and so do Ctrip room prices; Ctrip
+   *flights* need no login, so do not ask for one there. Flights and hotels
+   share a domain and behave differently — one page proves nothing about
+   another.
 4. Run Xiaohongshu research alone, then close or isolate it before opening an
    OTA.
 5. Compile social evidence into attraction cards.
@@ -121,14 +123,19 @@ Degrade safely when optional capabilities are missing:
 7. Build route skeletons before querying long-distance prices.
 8. Query rail with the community MCP, then query flights in a separate browser
    phase.
-9. Normalize every result before it affects planning.
-10. Construct economy, balanced, and relaxed candidates when they are genuinely
+9. Query lodging in its own browser phase once day clusters exist, so hotel
+   choice is made per cluster rather than for the destination as a whole.
+   This phase starts with its own login handoff — a session already signed in
+   for flights proves nothing about hotels, and the reverse holds too.
+10. Normalize every result before it affects planning.
+11. Construct economy, balanced, and relaxed candidates when they are genuinely
     different.
-11. Obtain a real route for every consecutive place pair.
-12. Run deterministic feasibility evaluation for each candidate.
-13. Repair hard conflicts and re-evaluate at most three times.
-14. Validate final plan content.
-15. Refresh selected rail and flight options immediately before presentation.
+12. Obtain a real route for every consecutive place pair.
+13. Run deterministic feasibility evaluation for each candidate.
+14. Repair hard conflicts and re-evaluate at most three times.
+15. Validate final plan content.
+16. Refresh selected rail, flight, and lodging options immediately before
+    presentation.
 
 Do not skip source normalization, route verification, feasibility evaluation,
 content validation, or the final refresh of dynamic transport data.
@@ -168,6 +175,18 @@ python3 "$SKILL_ROOT/scripts/travel_planner.py" \
 A displayed web price is not a payable price, and an airfare goes stale within
 hours. Run this immediately before presentation; `STALE_FLIGHT_PRICE` means the
 offer must be re-queried, not merely re-labelled.
+
+Check lodging offers, which need their own command because a room price
+depends on who was looking:
+
+```bash
+python3 "$SKILL_ROOT/scripts/travel_planner.py" \
+  validate-lodging --input /absolute/path/to/lodging.json --rooms 1
+```
+
+`login_state` and `member_tier` are required: signed out there is no price at
+all, and signed in the price follows the tier. The card figure is per night,
+so the stay total is derived here rather than read off the page.
 
 Evaluate an itinerary:
 
@@ -226,6 +245,9 @@ cannot be tried, say that it was not tried rather than that it does not work.
 - Use Amap for normalized POIs, coordinates, and returned ground routes.
 - Label rail results `12306-community-mcp` and retain the connector version.
 - Label flight results with the exact OTA web channel and login state.
+- Label lodging results with the exact OTA web channel, `login_state`, and
+  `member_tier`. A room price is meaningless without both: it does not exist
+  signed out, and it moves with the tier signed in.
 - Research Xiaohongshu for route sequencing, price levels, queues, effort and
   seasonal timing. **Read the carousel images, not only the text.** The note
   body is often an introduction while the itinerary chart and the itemised

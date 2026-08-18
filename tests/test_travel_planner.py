@@ -28,6 +28,12 @@ from travel_planner.flight import (
     validate_offers,
 )
 from travel_planner.intake import validate_trip_request
+from travel_planner.lodging import (
+    LodgingDataError,
+    nights_between,
+    total_for_stay,
+)
+from travel_planner.lodging import validate_offers as validate_lodging
 from travel_planner.rail import (
     RailDataError,
     normalize_query_result,
@@ -1187,6 +1193,109 @@ class RailNormalizationTest(unittest.TestCase):
         self.assertIn("无座 无", text)
 
 
+class LodgingTest(unittest.TestCase):
+    """A room price means nothing without who was looking, and per what."""
+
+    def offer(self, **extra):
+        offer = {
+            "offer_id": "h1",
+            "name": "某酒店",
+            "check_in": "2026-10-04",
+            "check_out": "2026-10-10",
+            "displayed_price": 556,
+            "price_basis": "PER_NIGHT",
+            "free_cancellation": True,
+            "source": {
+                "channel": "ctrip_hotel_web",
+                "login_state": "CONNECTED",
+                "member_tier": "钻石贵宾",
+                "checked_at": "2026-08-18T20:00:00+08:00",
+            },
+        }
+        source = extra.pop("source", None)
+        if source is not None:
+            offer["source"] = {**offer["source"], **source}
+        offer.update(extra)
+        return offer
+
+    def test_a_card_price_is_per_night_not_per_stay(self):
+        """556 a night for six nights is 3336, and the trap costs six-fold."""
+
+        self.assertEqual(total_for_stay(self.offer()), 3336.0)
+
+    def test_a_total_price_is_not_multiplied_again(self):
+        self.assertEqual(
+            total_for_stay(self.offer(price_basis="TOTAL_STAY")), 556.0
+        )
+
+    def test_rooms_multiply_the_stay(self):
+        self.assertEqual(total_for_stay(self.offer(), rooms=2), 6672.0)
+
+    def test_nights_are_the_date_difference(self):
+        self.assertEqual(nights_between("2026-10-04", "2026-10-10"), 6)
+        for bad in (("2026-10-04", "2026-10-04"), ("2026-10-10", "2026-10-04")):
+            with self.assertRaises(LodgingDataError):
+                nights_between(*bad)
+
+    def test_a_signed_out_price_cannot_exist(self):
+        """The OTA shows no room price at all to an anonymous visitor."""
+
+        report = validate_lodging(
+            [self.offer(source={"login_state": "ANONYMOUS"})]
+        )
+        self.assertEqual(report["status"], "INVALID")
+        self.assertEqual(
+            report["hard_conflicts"][0]["code"], "UNPRICED_LOGIN_STATE"
+        )
+
+    def test_an_unrecorded_login_state_is_rejected(self):
+        offer = self.offer()
+        offer["source"].pop("login_state")
+        report = validate_lodging([offer])
+        self.assertEqual(report["status"], "INVALID")
+        self.assertEqual(
+            report["hard_conflicts"][0]["code"], "MISSING_LOGIN_STATE"
+        )
+
+    def test_a_member_price_and_a_public_price_are_not_comparable(self):
+        """Neither carries a tier the other could be ranked against."""
+
+        report = validate_lodging(
+            [
+                self.offer(),
+                self.offer(
+                    offer_id="h2",
+                    source={"login_state": "PUBLIC_READY", "member_tier": ""},
+                ),
+            ]
+        )
+        codes = {issue["code"] for issue in report["warnings"]}
+        self.assertIn("MIXED_VIEWING_CONTEXTS", codes)
+
+    def test_one_consistent_context_raises_no_comparability_warning(self):
+        report = validate_lodging([self.offer(), self.offer(offer_id="h2")])
+        codes = {issue["code"] for issue in report["warnings"]}
+        self.assertNotIn("MIXED_VIEWING_CONTEXTS", codes)
+
+    def test_a_signed_in_price_without_a_tier_warns(self):
+        report = validate_lodging(
+            [self.offer(source={"member_tier": ""})]
+        )
+        codes = {issue["code"] for issue in report["warnings"]}
+        self.assertIn("MEMBER_TIER_UNRECORDED", codes)
+
+    def test_freshness_is_only_judged_against_a_supplied_clock(self):
+        offer = self.offer()
+        self.assertFalse(
+            validate_lodging([offer])["summary"]["freshness_checked"]
+        )
+        report = validate_lodging(
+            [offer], now=datetime(2026, 8, 20, tzinfo=timezone.utc)
+        )
+        codes = {issue["code"] for issue in report["warnings"]}
+        self.assertIn("STALE_LODGING_PRICE", codes)
+
+
 class BlockedSourceTest(unittest.TestCase):
     """A destination where every content source is blocked must still answer."""
 
@@ -1634,6 +1743,84 @@ class PlanContentValidationTest(unittest.TestCase):
             }
         )
         self.assertEqual(report["status"], "VALID")
+
+    def descriptive_plan(self, **extra):
+        plan = {
+            "days": [
+                {
+                    "activities": [
+                        {
+                            "id": "old-town",
+                            "type": "ATTRACTION",
+                            "name": "示例老城",
+                            "description": "沿滨河步道慢走。",
+                            "features": ["滨河城市景观"],
+                            "why_visit": ["适合低强度游览"],
+                            "suggested_duration_minutes": 180,
+                            "source_refs": ["source-1"],
+                        }
+                    ]
+                }
+            ],
+            "sources": [{"id": "source-1"}],
+            "segments": [],
+        }
+        plan.update(extra)
+        return plan
+
+    def test_a_signed_out_lodging_quote_fails_the_plan(self):
+        """validate-plan must not pass a price the OTA could not have shown."""
+
+        report = validate_plan_content(
+            self.descriptive_plan(
+                lodging_offers=[
+                    {
+                        "offer_id": "h1",
+                        "name": "示例酒店",
+                        "check_in": "2026-10-01",
+                        "check_out": "2026-10-02",
+                        "displayed_price": 300,
+                        "source": {
+                            "channel": "ctrip_hotel",
+                            "checked_at": "2026-08-18T20:00:00+08:00",
+                            "login_state": "ANONYMOUS",
+                        },
+                    }
+                ]
+            )
+        )
+        self.assertEqual(report["status"], "INVALID")
+        self.assertTrue(
+            any("OTA" in message for message in report["errors"])
+        )
+
+    def test_a_clean_lodging_quote_does_not_block_the_plan(self):
+        report = validate_plan_content(
+            self.descriptive_plan(
+                lodging_offers=[
+                    {
+                        "offer_id": "h2",
+                        "name": "示例酒店",
+                        "check_in": "2026-10-01",
+                        "check_out": "2026-10-02",
+                        "displayed_price": 300,
+                        "free_cancellation": True,
+                        "source": {
+                            "channel": "ctrip_hotel",
+                            "checked_at": "2026-08-18T20:00:00+08:00",
+                            "login_state": "CONNECTED",
+                            "member_tier": "钻石贵宾",
+                        },
+                    }
+                ]
+            )
+        )
+        self.assertEqual(report["status"], "VALID")
+
+    def test_a_plan_without_lodging_offers_is_unaffected(self):
+        self.assertEqual(
+            validate_plan_content(self.descriptive_plan())["status"], "VALID"
+        )
 
     def test_rejects_missing_transition(self):
         report = validate_plan_content(

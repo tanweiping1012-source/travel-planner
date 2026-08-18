@@ -29,6 +29,8 @@ python3 scripts/travel_planner.py normalize-rail --input examples/rail_query.jso
   --select --seat-class second_class
 python3 scripts/travel_planner.py validate-flights --input examples/final_plan.json \
   --skip-freshness
+python3 scripts/travel_planner.py validate-lodging --input examples/final_plan.json \
+  --skip-freshness
 python3 scripts/travel_planner.py validate-plan --input examples/final_plan.json
 ```
 
@@ -68,6 +70,10 @@ python3 scripts/travel_planner.py validate-plan --input examples/final_plan.json
 - 来源受阻：声明了 `unavailable_sources` 时，「完全没有景点」降级为
   `INCOMPLETE_EVIDENCE`（退出码 3）；空壳景点、缺路线等一律不赦免；声明本身
   必须带 provider，空数组和纯字符串都不算
+- 住宿记录：卡片价按晚数与房间数换算成总价，`TOTAL_STAY` 口径不被重复相乘；
+  未记录登录态、或登录态是匿名，一律判硬冲突；不同登录态或会员等级的报价混在
+  一起会告警不可比较；`validate-plan` 内部会跑 `validate-lodging`，坏的住宿
+  记录即使方案里没别的问题也会让整份方案判 `INVALID`
 
 ### 先试一次，再说做不到
 
@@ -80,6 +86,7 @@ python3 scripts/travel_planner.py validate-plan --input examples/final_plan.json
 | 实跑摩尔曼斯克 | 所有内容源被挡时 `validate-plan` 直接死锁 |
 | 登录后重跑小红书 | 评论区信息量远超正文 |
 | 真的截了一次图 | 费用表全在轮播图里，正文一个数字都没有 |
+| 实跑携程酒店（新疆规划） | 匿名访问不展示任何价格，且第一次判断"匿名能看到价格"是错的——那次其实已经带着登录态 |
 
 写测试测不出这些。构造的样例数据只会验证你已经想到的情况。
 
@@ -88,6 +95,22 @@ python3 scripts/travel_planner.py validate-plan --input examples/final_plan.json
 `research.py` 说成没实现。每一次都白白丢掉一个真实能力。
 
 不确定就跑一次。跑不了就说「没试」，不要说「不行」。
+
+### 携程酒店和小红书一样，先停下来要登录
+
+第一次测携程酒店时，看到 `hotels.ctrip.com` 能显示价格，就得出了"匿名也能查酒店"
+的结论——**这个结论是错的**，只是没意识到那次浏览器早已带着登录态（页面右上角
+写着「尊敬的钻石贵宾」，证据当时就在眼前）。真正的匿名请求会跳转到
+`passport.ctrip.com`，一个价格都不显示。
+
+机票和酒店在同一个域名下，行为却完全不同：Ctrip 机票匿名可查，Ctrip 酒店匿名
+查不到。这正是「先试一次，再说做不到」那条原则要防的错——但这次踩的是它的
+反面：**观察到了一次「能查到」，却没检查那次观察的登录态是否被污染**，等于用
+一次不受控的实验去否定另一次实验。
+
+所以酒店查询现在和小红书走同一套流程：**先停，用工具阻塞式地请用户扫码登录，
+再继续**，不试图先匿名探一次。`references/workflow.md` 的 Lodging branch 与
+`references/browser-use.md` 的 Hotels 小节都写明了这一步。
 
 ### 小红书只读文字等于没读
 

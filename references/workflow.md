@@ -169,6 +169,34 @@ route skeleton identifies the required gateway city and time windows.
 9. Map a selected flight into an **activity** carrying the check-in buffer,
    120 minutes domestic and 180 international.
 
+### Lodging branch
+
+Runs once the day clusters from the map branch exist, so candidate hotels can
+be chosen by which places each day actually visits rather than by city alone —
+this is the step that lets accommodation feed back into the route instead of
+being bolted on after it is fixed.
+
+1. **The login handoff happens before anything else.** An OTA hotel list shows
+   a signed-out visitor no price at all — not a thin one, none — so this
+   branch begins exactly like Xiaohongshu: stop, block on the question tool,
+   name the site, and wait. Do not attempt a lodging search anonymously first;
+   unlike flights, there is nothing there.
+2. Search each day cluster's area, the stated check-in and check-out dates,
+   and room count.
+3. Extract visible offers: name, room type, the per-night card price, rating,
+   and cancellation terms.
+4. Record `login_state` and `member_tier` with every quote. A quote gathered
+   signed out is impossible by construction; a quote gathered signed in
+   without its tier cannot be told apart from a stranger's price.
+5. Run `validate-lodging` before any offer influences a candidate. It derives
+   the stay total from nights and rooms rather than trusting a card price —
+   `¥556 起` for six nights is `¥3,336`, not `¥556` — and flags offers
+   gathered under different login states or tiers as not comparable to each
+   other.
+6. Reject a cheap offer with no free cancellation when the itinerary still has
+   open feasibility risk; a rate that cannot be released costs more than it
+   saves if an earlier repair later moves the traveller elsewhere.
+
 ## Browser Phase Gate
 
 Use one browser worker and one dynamic site at a time:
@@ -178,10 +206,18 @@ XIAOHONGSHU_OPEN
   -> XIAOHONGSHU_DONE | XIAOHONGSHU_BLOCKED
   -> SAVE_SOCIAL_RESEARCH
   -> CLOSE_OR_FREEZE_XIAOHONGSHU_TABS
-  -> OTA_OPEN
-  -> OTA_DONE | OTA_BLOCKED
+  -> OTA_FLIGHT_OPEN
+  -> OTA_FLIGHT_DONE | OTA_FLIGHT_BLOCKED
   -> SAVE_FLIGHT_RESEARCH
+  -> OTA_LODGING_LOGIN_HANDOFF
+  -> OTA_LODGING_OPEN
+  -> OTA_LODGING_DONE | OTA_LODGING_BLOCKED
+  -> SAVE_LODGING_RESEARCH
 ```
+
+The flight and lodging phases share a domain and do not share a login state:
+Ctrip flights read anonymously, Ctrip hotels do not. Finishing the flight
+phase proves nothing about whether the lodging phase can skip its handoff.
 
 Do not spawn a second browser worker to recover while the first worker is still
 active. Instead, set a bounded phase budget and ask the same worker to return
@@ -190,9 +226,11 @@ partial results.
 Recommended budgets:
 
 - Login handoff: wait for the user without running another browser phase.
+  This applies identically to Xiaohongshu and to Ctrip lodging.
 - Xiaohongshu: three focused queries, three to eight notes, then stop.
-- OTA initial search: up to ten representative offers.
-- OTA targeted follow-up: one additional time-window filter.
+- OTA flight search: up to ten representative offers.
+- OTA flight follow-up: one additional time-window filter.
+- OTA lodging search: up to ten representative offers per day cluster.
 - A phase with no progress after two snapshot/recovery cycles becomes `BLOCKED`.
 
 ## Candidate Generation
@@ -239,6 +277,12 @@ Run `validate-plan` before presentation. A plan fails when:
 - A day has no activity description.
 - A transition between consecutive activities has no transport segment.
 - Browser-derived prices lack channel or timestamp.
+- A lodging offer lacks `login_state`, or was gathered signed out — Ctrip
+  shows no room price to an anonymous visitor, so such an offer cannot be
+  genuine.
+
+`validate-plan` runs `validate-lodging` internally, so a plan with a broken
+lodging quote fails here even if nothing else references it.
 
 Do not present an invalid plan as complete.
 
@@ -252,6 +296,10 @@ Immediately before presentation:
   means the offer must be looked up again, not relabelled: the default limit
   is two hours, because a rail fare barely moves while an airfare from this
   morning may already be wrong.
+- Re-run `validate-lodging` with the presentation time. Its default staleness
+  window is twelve hours — a room rate moves slower than an airfare, but
+  holiday-peak availability does not, and a `STALE_LODGING_PRICE` offer needs
+  the same re-query as a stale fare, not a relabel.
 - Re-run affected transfer checks if times or airports changed.
 - Mark a result stale when refresh fails.
 

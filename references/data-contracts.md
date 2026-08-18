@@ -343,6 +343,41 @@ Output of `compile-research`:
 Cards with missing features, reason, duration, or sources are incomplete and
 must be enriched before route generation.
 
+## Lodging Offer
+
+```json
+{
+  "offer_id": "ctrip-hotel-1",
+  "name": "布尔津某酒店",
+  "city": "布尔津",
+  "room_type": "标准大床房",
+  "check_in": "2026-10-04",
+  "check_out": "2026-10-10",
+  "displayed_price": 556,
+  "price_basis": "PER_NIGHT",
+  "free_cancellation": true,
+  "rating": 4.7,
+  "source": {
+    "provider": "ctrip",
+    "connector_type": "browser",
+    "channel": "ctrip_hotel_web",
+    "login_state": "CONNECTED",
+    "member_tier": "钻石贵宾",
+    "checked_at": "2026-08-18T20:00:00+08:00"
+  }
+}
+```
+
+`price_basis` is `PER_NIGHT` or `TOTAL_STAY`. Never write a stay total into
+`displayed_price`; `validate-lodging` derives it from the nights and rooms,
+because a card price read as a total understates a week six-fold.
+
+`login_state` and `member_tier` are **required**, not descriptive. An OTA
+shows a signed-out visitor no room price at all, and shows a signed-in one a
+price scaled to their tier. A quote without them cannot be compared with any
+other quote, and mixing contexts raises `MIXED_VIEWING_CONTEXTS` rather than
+producing a ranking that means nothing.
+
 ## Unavailable Sources
 
 A plan may declare which providers could not be reached:
