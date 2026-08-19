@@ -119,11 +119,14 @@ mode**:
 
 ### Map branch
 
-1. Resolve origin, destination, airports, stations, and candidate places.
+1. Resolve origin, destination, airports, stations, and candidate places with
+   `search-places`.
 2. Reject closed or ambiguous POIs.
 3. Validate every selected place from the destination brief.
 4. Group nearby places into coherent day clusters.
-5. Query every local route needed by a candidate.
+5. Run `amap-snapshot` for every local route needed by a candidate — this is
+   what a day cluster's real walking, transit, and driving time is measured
+   against, not an estimate.
 
 Do not ask the OTA for prices until at least one route skeleton exists.
 
@@ -256,7 +259,7 @@ A timeline containing only transport segments is invalid.
 
 ## Feasibility and Repair
 
-Run the deterministic engine. Repair in this order:
+Run `evaluate`. Repair in this order:
 
 1. Adjust activity times.
 2. Increase transfer buffers.

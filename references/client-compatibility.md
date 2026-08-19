@@ -43,9 +43,12 @@ Personal scope:
 ~/.claude/skills/travel-planner-mvp/
 ```
 
-Status: Skill structure and scripts are compatible. Configure the local 12306
-MCP and a browser automation tool separately. Authenticated browser research
-requires a browser adapter that can visibly hand control to the user.
+Status: full workflow live-tested with the Claude Browser tool, shell tools,
+Amap, and local 12306 MCP — real 12306 queries, real Ctrip flight and hotel
+pages, and real Xiaohongshu research including carousel-image reading, across
+several complete planning runs. This is the client the coverage gate, the
+login-handoff pattern, and the lodging login-gating rule were all discovered
+on; see [`CONTRIBUTING.md`](../CONTRIBUTING.md) for what each run found.
 
 ### OpenAI Codex
 
@@ -144,7 +147,9 @@ Requirements:
 - Interactive browser automation
 - User login/CAPTCHA handoff
 
-Provides map, rail, flight, and Xiaohongshu-assisted planning.
+Provides map, rail, flight, lodging, and Xiaohongshu-assisted planning.
+Lodging additionally requires the login handoff every time — unlike flights,
+Ctrip shows a signed-out visitor no room price at all.
 
 ### Browserless
 
@@ -154,8 +159,8 @@ Requirements:
 - Shell/Python execution
 - Optional local stdio MCP
 
-Provides deterministic planning, Amap, and rail. Flight and social research must
-be user-provided or marked unavailable.
+Provides deterministic planning, Amap, and rail. Flight, lodging, and social
+research must be user-provided or marked unavailable.
 
 ### Script Only
 

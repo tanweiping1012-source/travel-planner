@@ -368,15 +368,58 @@ must be enriched before route generation.
 }
 ```
 
-`price_basis` is `PER_NIGHT` or `TOTAL_STAY`. Never write a stay total into
-`displayed_price`; `validate-lodging` derives it from the nights and rooms,
-because a card price read as a total understates a week six-fold.
+## Lodging Offer Validation
 
-`login_state` and `member_tier` are **required**, not descriptive. An OTA
-shows a signed-out visitor no room price at all, and shows a signed-in one a
-price scaled to their tier. A quote without them cannot be compared with any
-other quote, and mixing contexts raises `MIXED_VIEWING_CONTEXTS` rather than
-producing a ranking that means nothing.
+Unlike flights, a lodging offer cannot exist at all without a session — Ctrip
+shows a signed-out visitor no room price, not a thin one. `validate-lodging`
+checks what that implies, and what the per-night card price implies.
+
+### `price_basis` decides how the total is derived
+
+`price_basis` is `PER_NIGHT` or `TOTAL_STAY`. Never write a stay total into
+`displayed_price`; the total is always derived from nights and rooms, because
+a card price read as a total understates a week six-fold — `¥556 起` for six
+nights is `¥3,336`, not `¥556`.
+
+### `login_state` and `member_tier` are required, not descriptive
+
+An OTA shows a signed-out visitor no room price at all, and shows a signed-in
+one a price scaled to their tier — the same room at `¥609` publicly and
+`¥479` to a diamond member. A quote without both fields cannot be compared
+with any other quote, and mixing quotes gathered under different login states
+or tiers raises `MIXED_VIEWING_CONTEXTS` rather than producing a ranking that
+means nothing.
+
+### Freshness is conditional
+
+Room prices move slower than airfares, but holiday-peak availability does not,
+so the default staleness limit is **12 hours** — longer than the flight
+window, not absent. As with flights, freshness is only evaluated when a clock
+is supplied: `validate-plan` runs the structural checks alone, and
+`validate-lodging` takes `--now` (defaulting to the current time) or
+`--skip-freshness`.
+
+```bash
+travel_planner.py validate-lodging --input plan.json --rooms 2          # uses now
+travel_planner.py validate-lodging --input plan.json --skip-freshness
+```
+
+### Checks
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `INVALID_LODGING_OFFER` | HARD | Offer malformed, or dates/price basis invalid |
+| `MISSING_SOURCE_METADATA` | HARD | No channel or no `checked_at` |
+| `MISSING_LOGIN_STATE` | HARD | `login_state` was not recorded at all |
+| `UNPRICED_LOGIN_STATE` | HARD | Recorded state cannot show a price (e.g. signed out) |
+| `INVALID_SOURCE_TIME` | HARD | `checked_at` could not be parsed |
+| `MEMBER_TIER_UNRECORDED` | WARNING | Signed in but `member_tier` is empty |
+| `STALE_LODGING_PRICE` | WARNING | Older than the 12-hour limit; re-query |
+| `NO_FREE_CANCELLATION` | WARNING | The rate cannot be released if the plan changes |
+| `MIXED_VIEWING_CONTEXTS` | WARNING | Offers span different login states or tiers |
+
+`validate-plan` runs `validate-lodging` internally on any `lodging_offers`
+present, so a broken quote fails the plan even if nothing else references it.
 
 ## Unavailable Sources
 

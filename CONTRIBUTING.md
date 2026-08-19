@@ -25,6 +25,7 @@ python3 -m unittest discover -s tests -v
 ```bash
 python3 scripts/travel_planner.py validate-request --input examples/trip_request.json
 python3 scripts/travel_planner.py evaluate --input examples/itinerary.json
+python3 scripts/travel_planner.py compile-research --input examples/social_research.json
 python3 scripts/travel_planner.py normalize-rail --input examples/rail_query.json \
   --select --seat-class second_class
 python3 scripts/travel_planner.py validate-flights --input examples/final_plan.json \
