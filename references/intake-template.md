@@ -1,24 +1,47 @@
 # Travel Intake Template
 
 Use this template to normalize a travel request. Do not require users to provide
-JSON when their natural-language request already supplies the same information.
+JSON when their natural-language request already supplies the same information,
+and do not ask for more than `validate-request` actually needs — see the split
+below before using the plain-text template as an interview script.
 
-## Required information
+## What actually blocks a run
 
-- Origin and destination region
-- Start and end dates
-- Number of travelers
-- Budget and whether it is per-person or party-total
-- Travel style
-- Required places with `CORE`, `IMPORTANT`, or `OPTIONAL` priority
-- Excluded places
-- Mobility level, walking limit, altitude acceptance, and accessibility needs
-- Trade-off order among core places, cost, pace, and comfort
-- Acceptance of weather-dependent core experiences
-- Browser approval for Xiaohongshu and OTA research
-- Relevant departure, return, and transfer constraints
+`validate-request` only asks for three fields beyond the trip's own outline,
+because each one changes the plan materially and has no safe default:
+
+- `budget_scope` — a 2000 budget per person is twice a 2000 budget for the party
+- `mobility.level` — decides which itineraries are possible at all
+- `browser_approval` — consent, which cannot be assumed on someone's behalf
+
+The trip's own outline is what a traveller states in one sentence: origin,
+destination, start and end dates, traveler count, `budget_cny`, and `style`.
+Together with the three fields above, that is the complete set that blocks.
+
+## What is safely assumed
+
+Everything else defaults if left unstated, and the default is reported back in
+`assumptions` rather than silently applied:
+
+| Field | Default when absent | Reading |
+|---|---|---|
+| `must_visit` | `[]` | No place is exempt from trade-offs |
+| `excluded_places` | `[]` | Nothing to avoid |
+| `mobility.max_walking_km_per_day` | 4 / 8 / 15 km, by `mobility.level` | The stated level already answers this |
+| `mobility.accepts_high_altitude` | accepted | Re-asked only if a high-altitude core place appears |
+| `mobility.accessibility_needs` | `[]` | No special needs |
+| `tradeoff_priority` | `CORE_PLACES, COST, PACE, COMFORT` | Keep the core sights, then save money |
+| `risk_tolerance.accepts_weather_dependent_core` | accepted | Re-asked only if it becomes decisive |
+
+Do not ask for these up front. Asking turns a sentence a traveller would
+actually say into a form — nobody volunteers that they have no excluded
+places. A value the traveller *does* supply is still validated normally;
+defaulting on absence never softens a check on presence.
 
 ## JSON template
+
+Every field below is shown for reference, including the ones that default.
+Only the fields listed under "What actually blocks a run" are mandatory.
 
 ```json
 {
@@ -79,6 +102,11 @@ JSON when their natural-language request already supplies the same information.
 
 ## Plain-text template
 
+Only the first block is worth asking as a batch when a request is genuinely
+incomplete. The second block is optional detail a traveller may volunteer —
+present it as "tell me if any of this applies," not as blanks to fill in, and
+let the defaults above stand for whatever is left unsaid.
+
 ```text
 使用 $travel-planner-mvp：
 出发地：
@@ -88,18 +116,23 @@ JSON when their natural-language request already supplies the same information.
 人数：
 预算：人均 / 总计，人民币
 旅行风格：
+体力等级：低 / 中 / 高
+小红书授权：匿名只读 / 允许我手动登录 / 禁止
+OTA 授权：匿名只读 / 允许我手动登录 / 禁止
+```
+
+可选，不说则按合理默认处理：
+
+```text
 核心必去（不可删除）：
 重要但可调整：
 明确不去：
-体力等级：低 / 中 / 高
-每日最多步行：
-是否接受 4000 米以上高海拔：
-无障碍、老人、儿童或健康限制：
-冲突时优先级：核心地点 / 省钱 / 松弛 / 舒适
-是否接受核心景观受天气影响：
+每日最多步行（不说则按体力等级默认 4/8/15 公里）：
+是否接受 4000 米以上高海拔（不说则默认接受）：
+无障碍、老人、儿童或健康限制（不说则默认无）：
+冲突时优先级：核心地点 / 省钱 / 松弛 / 舒适（不说则默认此顺序）：
+是否接受核心景观受天气影响（不说则默认接受）：
 是否接受早班、夜班和中转：
 每天最晚返回时间：
-小红书授权：匿名只读 / 允许我手动登录 / 禁止
-OTA 授权：匿名只读 / 允许我手动登录 / 禁止
 其他住宿、行李或饮食偏好：
 ```

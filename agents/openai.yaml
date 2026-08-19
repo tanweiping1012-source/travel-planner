@@ -1,4 +1,4 @@
 interface:
   display_name: "Travel Planner MVP"
-  short_description: "规划带实时地图、铁路、航班、预算与可行性验证的中国境内旅行行程"
+  short_description: "规划带实时地图、铁路、航班、酒店住宿与可行性验证的中国境内旅行行程（境外降级为浏览器辅助）"
   default_prompt: "Use $travel-planner-mvp to create a read-only, evidence-backed itinerary with route, budget, and feasibility checks."
