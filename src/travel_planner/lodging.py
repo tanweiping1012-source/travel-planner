@@ -80,9 +80,23 @@ def total_for_stay(offer: Dict[str, Any], rooms: int = 1) -> float:
     accommodation budget.
     """
 
-    price = offer.get("displayed_price")
-    if price is None:
+    raw_price = offer.get("displayed_price")
+    if raw_price is None:
         raise LodgingDataError("住宿记录缺少可见价格")
+    try:
+        price = float(raw_price)
+    except (TypeError, ValueError) as exc:
+        # An OTA card reads "¥556", and lifting it verbatim is the obvious
+        # mistake. Say which value failed rather than letting float()'s own
+        # message surface: "could not convert string to float" tells a reader
+        # nothing about which offer to fix.
+        raise LodgingDataError(
+            f"价格无法解析为数字：{raw_price!r}；请去掉货币符号与千分位后再记录"
+        ) from exc
+    if price < 0:
+        # A negative total silently corrupts the budget line it feeds, and
+        # looks entirely normal downstream.
+        raise LodgingDataError(f"价格不能为负：{price}")
     basis = str(offer.get("price_basis") or "PER_NIGHT").upper()
     if basis not in PRICE_BASES:
         raise LodgingDataError(f"未知的计价口径：{basis}")
@@ -90,9 +104,9 @@ def total_for_stay(offer: Dict[str, Any], rooms: int = 1) -> float:
         raise LodgingDataError("房间数必须至少为 1")
 
     if basis == "TOTAL_STAY":
-        return float(price) * rooms
+        return price * rooms
     nights = nights_between(offer.get("check_in"), offer.get("check_out"))
-    return float(price) * nights * rooms
+    return price * nights * rooms
 
 
 def normalize_offer(offer: Dict[str, Any], rooms: int = 1) -> Dict[str, Any]:

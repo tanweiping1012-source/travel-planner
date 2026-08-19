@@ -201,10 +201,37 @@ def validate_offers(
                     offer_id,
                 )
             )
-        if offer.get("displayed_total_price") is None:
+        raw_price = offer.get("displayed_total_price")
+        if raw_price is None:
             warnings.append(
                 _issue("MISSING_PRICE", "WARNING", "机票记录缺少可见价格", offer_id)
             )
+        else:
+            # An OTA card reads "¥3,583"; a price lifted verbatim would only
+            # fail much later, inside offer_to_activity, with float()'s own
+            # unhelpful message. A negative fare corrupts a budget silently.
+            try:
+                price_value = float(raw_price)
+            except (TypeError, ValueError):
+                hard_conflicts.append(
+                    _issue(
+                        "INVALID_PRICE",
+                        "HARD",
+                        f"价格无法解析为数字：{raw_price!r}；"
+                        "请去掉货币符号与千分位后再记录",
+                        offer_id,
+                    )
+                )
+            else:
+                if price_value < 0:
+                    hard_conflicts.append(
+                        _issue(
+                            "INVALID_PRICE",
+                            "HARD",
+                            f"价格不能为负：{price_value}",
+                            offer_id,
+                        )
+                    )
         if str(offer.get("baggage_visibility") or "UNKNOWN").upper() == "UNKNOWN":
             warnings.append(
                 _issue(
@@ -285,7 +312,12 @@ def offer_to_activity(
         activity["timezone"] = timezone_name
     price = offer.get("displayed_total_price")
     if price is not None:
-        activity["estimated_cost"] = float(price)
+        try:
+            activity["estimated_cost"] = float(price)
+        except (TypeError, ValueError) as exc:
+            raise FlightDataError(
+                f"价格无法解析为数字：{price!r}；请去掉货币符号与千分位后再记录"
+            ) from exc
         activity["price_source"] = activity["source"]
         checked_at = (offer.get("source") or {}).get("checked_at")
         if checked_at:

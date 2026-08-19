@@ -383,6 +383,40 @@ class DiagnosticsTest(unittest.TestCase):
         self.assertEqual(report["rail_mcp"]["registration"]["status"], "READY")
         self.assertEqual(report["status"], "READY")
 
+    def test_an_entry_that_cannot_start_is_not_ready(self):
+        """A hand-written entry missing its command is the likeliest mistake.
+
+        Reporting it READY sends the user to restart the client and find the
+        tools still absent, which is the least debuggable outcome available.
+        """
+
+        for servers in (
+            {"12306": {}},
+            {"12306": {"args": ["run"]}},
+            {"12306": {"command": "   "}},
+            {"12306": "uv run mcp-server-12306"},
+        ):
+            with tempfile.TemporaryDirectory() as temporary_directory:
+                data_dir = Path(temporary_directory)
+                self.rail_runtime(data_dir)
+                config = data_dir / "claude.json"
+                config.write_text(json.dumps({"mcpServers": servers}),
+                                  encoding="utf-8")
+                report = build_doctor_report(
+                    {"provider": "amap", "status": "READY"},
+                    data_dir=data_dir,
+                    client="claude-code",
+                    claude_config_path=config,
+                )
+            self.assertEqual(
+                report["rail_mcp"]["registration"]["status"], "INCOMPLETE"
+            )
+            self.assertEqual(report["rail_mcp"]["status"], "PARTIAL")
+            self.assertTrue(
+                any("command" in action for action in report["actions"]),
+                "an incomplete registration must say how to complete it",
+            )
+
     def test_claude_code_without_the_server_reports_missing(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             data_dir = Path(temporary_directory)
@@ -715,6 +749,91 @@ class FeasibilityTest(unittest.TestCase):
         codes = {issue["code"] for issue in report["warnings"]}
         self.assertIn("INVALID_TIME_FORMAT", codes)
 
+    def two_activities(self, segments=None, **extra):
+        plan = {
+            "timezone": "Asia/Shanghai",
+            "activities": [
+                {
+                    "id": "a",
+                    "name": "景点A",
+                    "start": "2026-10-01T09:00:00+08:00",
+                    "end": "2026-10-01T10:00:00+08:00",
+                },
+                {
+                    "id": "b",
+                    "name": "景点B",
+                    "start": "2026-10-01T10:30:00+08:00",
+                    "end": "2026-10-01T11:00:00+08:00",
+                },
+            ],
+            "segments": segments if segments is not None else [],
+        }
+        plan.update(extra)
+        return plan
+
+    def test_a_price_copied_off_a_card_does_not_crash_the_evaluation(self):
+        """It used to raise float()'s own message out of the whole engine."""
+
+        plan = self.two_activities()
+        plan["activities"][0]["estimated_cost"] = "¥620"
+        report = evaluate_itinerary(plan)
+        self.assertEqual(report["status"], "INFEASIBLE")
+        self.assertIn(
+            "UNREADABLE_NUMBER",
+            {issue["code"] for issue in report["hard_conflicts"]},
+        )
+
+    def test_a_negative_transfer_makes_the_impossible_look_reachable(self):
+        """The dangerous direction: it turns INFEASIBLE into FEASIBLE."""
+
+        report = evaluate_itinerary(
+            self.two_activities(
+                segments=[{"from_id": "a", "to_id": "b", "duration_minutes": -999}]
+            )
+        )
+        self.assertEqual(report["status"], "INFEASIBLE")
+        self.assertIn(
+            "NEGATIVE_VALUE",
+            {issue["code"] for issue in report["hard_conflicts"]},
+        )
+
+    def test_a_negative_walking_distance_is_rejected(self):
+        plan = self.two_activities()
+        plan["activities"][0]["walking_km"] = -50
+        report = evaluate_itinerary(plan)
+        self.assertEqual(report["status"], "INFEASIBLE")
+
+    def test_a_repeated_activity_id_is_rejected(self):
+        """Segments are keyed by (from_id, to_id); a repeat mismatches them."""
+
+        plan = self.two_activities()
+        plan["activities"][1]["id"] = "a"
+        report = evaluate_itinerary(plan)
+        self.assertIn(
+            "DUPLICATE_ACTIVITY_ID",
+            {issue["code"] for issue in report["hard_conflicts"]},
+        )
+
+    def test_valid_numbers_are_still_summed_normally(self):
+        # 30 minutes between the two activities, so the transfer has to fit
+        # inside it: 10 travelling plus the 15-minute default buffer.
+        plan = self.two_activities(
+            segments=[
+                {
+                    "from_id": "a",
+                    "to_id": "b",
+                    "duration_minutes": 10,
+                    "estimated_cost": 6,
+                }
+            ],
+            budget_cny=1000,
+        )
+        plan["activities"][0]["estimated_cost"] = 100
+        plan["activities"][1]["estimated_cost"] = 50
+        report = evaluate_itinerary(plan)
+        self.assertEqual(report["status"], "FEASIBLE")
+        self.assertEqual(report["summary"]["estimated_cost_cny"], 156.0)
+
     def test_blocked_plan_never_outranks_a_merely_risky_one(self):
         blocked = evaluate_itinerary(
             {
@@ -872,6 +991,21 @@ class FlightOfferTest(unittest.TestCase):
         }
         offer.update(overrides)
         return offer
+
+    def test_an_unparseable_or_negative_fare_is_a_hard_conflict(self):
+        """Caught at validation, not later inside offer_to_activity."""
+
+        for raw in ("¥620", "3,583", -500):
+            report = validate_offers([self.offer(displayed_total_price=raw)])
+            self.assertEqual(report["status"], "INVALID")
+            self.assertIn(
+                "INVALID_PRICE",
+                {issue["code"] for issue in report["hard_conflicts"]},
+            )
+
+    def test_offer_to_activity_reports_a_bad_fare_as_its_own_error(self):
+        with self.assertRaises(FlightDataError):
+            offer_to_activity(self.offer(displayed_total_price="¥620"))
 
     def test_freshness_is_skipped_without_a_clock(self):
         """A stored plan is not necessarily a plan being presented."""
@@ -1162,6 +1296,12 @@ class RailNormalizationTest(unittest.TestCase):
         self.assertEqual(activity["required_buffer_minutes"], 45)
         self.assertEqual(activity["seat_class_label"], "二等座")
 
+    def test_an_unparseable_or_negative_fare_is_this_module_s_error(self):
+        train = normalize_train(self.train())
+        for raw in ("¥337", "1,204", -50):
+            with self.assertRaises(RailDataError):
+                train_to_activity(train, "2026-08-20", price_cny=raw)
+
     def test_activity_records_price_source_when_supplied(self):
         train = normalize_train(self.train())
         activity = train_to_activity(train, "2026-08-20", price_cny=73.0)
@@ -1269,6 +1409,22 @@ class LodgingTest(unittest.TestCase):
             offer["source"] = {**offer["source"], **source}
         offer.update(extra)
         return offer
+
+    def test_a_price_lifted_verbatim_from_the_card_is_refused(self):
+        """An OTA card reads ¥556 and 3,583 — both are the obvious mistake."""
+
+        for raw in ("¥556", "3,583", "556元", ""):
+            with self.assertRaises(LodgingDataError) as context:
+                total_for_stay(self.offer(displayed_price=raw))
+            # The message must name the offending value; float()'s own
+            # "could not convert string to float" identifies no offer.
+            self.assertIn(repr(raw), str(context.exception))
+
+    def test_a_negative_price_is_refused_rather_than_totalled(self):
+        """A negative total corrupts the budget line and looks normal."""
+
+        with self.assertRaises(LodgingDataError):
+            total_for_stay(self.offer(displayed_price=-100))
 
     def test_a_card_price_is_per_night_not_per_stay(self):
         """556 a night for six nights is 3336, and the trap costs six-fold."""

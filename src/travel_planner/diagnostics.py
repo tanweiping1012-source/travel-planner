@@ -75,8 +75,14 @@ def _claude_code_mcp_status(
 ) -> dict:
     """Check whether Claude Code has the rail MCP registered.
 
-    Only the presence of the server name is read. The rest of the file holds
-    unrelated account and project state, none of which belongs in a report.
+    Only the server's own entry is read, and only enough of it to tell whether
+    it could start. The rest of the file holds unrelated account and project
+    state, none of which belongs in a report.
+
+    The name alone is not enough. An entry hand-written without a ``command``
+    is exactly what a user produces when following the setup instructions
+    partially, and reporting it READY sends them to restart the client and
+    find the tools still absent — the least debuggable outcome available.
     """
 
     path = config_path or Path.home() / ".claude.json"
@@ -93,12 +99,22 @@ def _claude_code_mcp_status(
             "message": "The Claude Code configuration could not be read.",
         }
     servers = config.get("mcpServers")
-    if isinstance(servers, dict) and server_name in servers:
-        return {"status": "READY", "client": "claude-code"}
-    return {
-        "status": "MISSING",
-        "message": "The 12306 MCP is not registered in Claude Code.",
-    }
+    if not isinstance(servers, dict) or server_name not in servers:
+        return {
+            "status": "MISSING",
+            "message": "The 12306 MCP is not registered in Claude Code.",
+        }
+    entry = servers.get(server_name)
+    if not isinstance(entry, dict) or not str(entry.get("command") or "").strip():
+        return {
+            "status": "INCOMPLETE",
+            "message": (
+                f"The {server_name} entry in ~/.claude.json has no command, "
+                "so the server cannot start. Re-run setup_rail_mcp.sh and copy "
+                "the command and args it prints."
+            ),
+        }
+    return {"status": "READY", "client": "claude-code"}
 
 
 def detect_client(
@@ -181,6 +197,13 @@ def build_doctor_report(
             "Register the installed 12306 stdio MCP in "
             + {"codex": "Codex", "claude-code": "Claude Code"}.get(client, "the client")
             + "."
+        )
+    elif rail_registration["status"] == "INCOMPLETE":
+        # A registration that exists but cannot start needs a different fix
+        # from one that is absent, so say which.
+        actions.append(
+            rail_registration.get("message")
+            or "Complete the 12306 MCP registration; its entry cannot start."
         )
     if browser["status"] == "UNVERIFIED":
         actions.append("Confirm whether the Agent client provides an interactive browser.")

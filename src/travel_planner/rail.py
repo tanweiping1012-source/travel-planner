@@ -277,7 +277,15 @@ def train_to_activity(
         activity["seat_class"] = chosen
         activity["seat_class_label"] = SEAT_LABELS.get(chosen, chosen)
     if price_cny is not None:
-        activity["estimated_cost"] = float(price_cny)
+        try:
+            fare = float(price_cny)
+        except (TypeError, ValueError) as exc:
+            raise RailDataError(
+                f"票价无法解析为数字：{price_cny!r}"
+            ) from exc
+        if fare < 0:
+            raise RailDataError(f"票价不能为负：{fare}")
+        activity["estimated_cost"] = fare
         activity["price_source"] = "12306:query-ticket-price"
     return activity
 

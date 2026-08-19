@@ -666,6 +666,39 @@ activity's `required_buffer_minutes` → the departure default for its `type`
 risky one: `FEASIBLE` is 100, `FEASIBLE_WITH_RISK` falls in 60–95, and
 `INFEASIBLE` stays at or below 40. Compare scores only within the same status.
 
+### Checks
+
+`status` is `INFEASIBLE` if any HARD issue is present, `FEASIBLE_WITH_RISK` if
+only WARNINGs are, and `FEASIBLE` otherwise.
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `INVALID_ACTIVITY_TIME` | HARD | `start` or `end` missing, malformed, or without an offset |
+| `INVALID_ACTIVITY_RANGE` | HARD | `end` is not later than `start` |
+| `DUPLICATE_ACTIVITY_ID` | HARD | Two activities share an `id`; segments are keyed by it |
+| `ACTIVITY_OVERLAP` | HARD | Two activities occupy the same time |
+| `INSUFFICIENT_TRANSFER_TIME` | HARD | Travel plus buffer exceeds the gap |
+| `BEFORE_OPENING` | HARD | Arrival precedes `opening_time` |
+| `AFTER_CLOSING` | HARD | Departure follows `closing_time`, or the visit crosses midnight |
+| `AFTER_LAST_ENTRY` | HARD | Arrival follows `last_entry_time` |
+| `UNREADABLE_NUMBER` | HARD | A numeric field could not be parsed — typically a price copied as `"¥620"` |
+| `NEGATIVE_VALUE` | HARD | A duration, buffer, cost, or distance was negative |
+| `MISSING_TRANSIT_SEGMENT` | WARNING | Same-day consecutive activities with no segment |
+| `AMBIGUOUS_TIMEZONE` | WARNING | UTC timestamps with no declared zone; hours checks skipped |
+| `UNKNOWN_TIMEZONE` | WARNING | The declared IANA name could not be resolved |
+| `INVALID_TIME_FORMAT` | WARNING | An `HH:MM` window field was malformed and skipped |
+| `STALE_SOURCE` | WARNING | `source_checked_at` older than `stale_after_hours` |
+| `INVALID_SOURCE_TIME` | WARNING | `source_checked_at` could not be parsed |
+| `DAILY_DURATION_EXCEEDED` | WARNING | A day's span exceeds `max_daily_minutes` |
+| `WALKING_LIMIT_EXCEEDED` | WARNING | A day's walking exceeds `max_walking_km_per_day` |
+| `BUDGET_EXCEEDED` | WARNING | Summed cost exceeds `budget_cny` |
+
+`NEGATIVE_VALUE` blocks rather than warns because of its direction: a negative
+transfer duration makes an impossible connection look achievable, so treating
+it as advisory would let the engine approve exactly what it exists to catch.
+The offending value is replaced with `0` for the rest of the evaluation, so
+the remaining checks still run and report everything else wrong at once.
+
 ## Rail Data from the 12306 MCP
 
 The *Rail Option* contract above is the shape a plan consumes. This section

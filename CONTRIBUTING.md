@@ -44,6 +44,11 @@ python3 scripts/travel_planner.py validate-plan --input examples/final_plan.json
 - 需求校验：完整需求直接放行、缺失字段一次性汇总、冲突识别
 - 高德地点与路线标准化，且密钥不出现在任何错误信息中
 - 新旧 macOS 钥匙串服务名兼容
+- 价格解析：`¥556`、`3,583` 这类直接从页面抄下来的值，以及负价格，在住宿、
+  机票、铁路三处一律报本模块的错误类型并指出是哪个值，不让 `float()` 的
+  「could not convert string to float」浮到用户面前
+- `doctor` 区分「注册了但起不来」（`INCOMPLETE`，配置缺 `command`）与「压根
+  没注册」（`MISSING`）——前者重启客户端也没用，两者的修复动作不同
 - `doctor` 识别本地能力，区分 Claude Code 与 Codex 的注册状态，且报告中
   不回显客户端配置里的无关账号信息
 - 可行性检查：时间、换乘、预算、营业时间

@@ -100,6 +100,44 @@ def _first_present(*values: Any) -> Optional[int]:
     return None
 
 
+class _BadNumber(NamedTuple):
+    """A numeric field that could not be read, kept for reporting."""
+
+    where: str
+    field: str
+    value: Any
+    negative: bool
+
+
+def _number(
+    value: Any,
+    where: str,
+    field: str,
+    problems: List["_BadNumber"],
+    default: float = 0.0,
+) -> float:
+    """Read a numeric field, recording rather than raising on bad input.
+
+    A price copied straight off an OTA card arrives as "¥620", and a negative
+    duration arrives from a mis-parse. Neither may reach the arithmetic: the
+    first crashed the whole evaluation with float()'s own message, and the
+    second quietly made an impossible itinerary look feasible, which is the
+    more dangerous of the two because nothing appears to go wrong.
+    """
+
+    if value is None:
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        problems.append(_BadNumber(where, field, value, False))
+        return default
+    if number < 0:
+        problems.append(_BadNumber(where, field, value, True))
+        return default
+    return number
+
+
 def _score(hard_conflicts: List[dict], warnings: List[dict]) -> int:
     """Score within status bands so a blocked plan never outranks a risky one."""
 
@@ -120,6 +158,7 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
     hard_conflicts: List[dict] = []
     warnings: List[dict] = []
     suggestions: List[str] = []
+    bad_numbers: List[_BadNumber] = []
 
     trip_zone_name = itinerary.get("timezone")
     trip_zone = _resolve_zone(trip_zone_name)
@@ -185,6 +224,26 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
         )
 
     parsed.sort(key=lambda entry: entry.start)
+
+    # Segments are matched by (from_id, to_id), so a repeated id silently
+    # points a transfer at the wrong pair of activities.
+    seen_ids = set()
+    for entry in parsed:
+        activity_id = str(entry.activity.get("id") or "")
+        if not activity_id:
+            continue
+        if activity_id in seen_ids:
+            hard_conflicts.append(
+                _issue(
+                    "DUPLICATE_ACTIVITY_ID",
+                    "HARD",
+                    f"活动 id「{activity_id}」重复；路段按 id 配对，"
+                    "重复会让通勤数据匹配到错误的活动",
+                    [activity_id],
+                )
+            )
+        seen_ids.add(activity_id)
+
     segment_index = {
         (str(segment.get("from_id")), str(segment.get("to_id"))): segment
         for segment in segments
@@ -226,7 +285,14 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
                 )
             continue
 
-        travel_minutes = int(segment.get("duration_minutes") or 0)
+        travel_minutes = int(
+            _number(
+                segment.get("duration_minutes"),
+                f"{current_id} -> {next_id}",
+                "duration_minutes",
+                bad_numbers,
+            )
+        )
         buffer_minutes = _first_present(
             segment.get("buffer_minutes"),
             following.activity.get("required_buffer_minutes"),
@@ -235,6 +301,12 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
         )
         if buffer_minutes is None:
             buffer_minutes = 15
+        if buffer_minutes < 0:
+            bad_numbers.append(
+                _BadNumber(f"{current_id} -> {next_id}", "buffer_minutes",
+                           buffer_minutes, True)
+            )
+            buffer_minutes = 0
         available_minutes = int((following.start - current.end).total_seconds() / 60)
         required_minutes = travel_minutes + buffer_minutes
         if available_minutes < required_minutes:
@@ -372,7 +444,13 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
             (day_items[-1].end - day_items[0].start).total_seconds() / 60
         )
         walking_km = sum(
-            float(entry.activity.get("walking_km") or 0) for entry in day_items
+            _number(
+                entry.activity.get("walking_km"),
+                str(entry.activity.get("id") or ""),
+                "walking_km",
+                bad_numbers,
+            )
+            for entry in day_items
         )
         if span_minutes > max_daily_minutes:
             warnings.append(
@@ -394,8 +472,24 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
                 )
             )
 
-    estimated_cost = sum(float(item.get("estimated_cost") or 0) for item in activities)
-    estimated_cost += sum(float(item.get("estimated_cost") or 0) for item in segments)
+    estimated_cost = sum(
+        _number(
+            item.get("estimated_cost"),
+            str(item.get("id") or item.get("name") or "activity"),
+            "estimated_cost",
+            bad_numbers,
+        )
+        for item in activities
+    )
+    estimated_cost += sum(
+        _number(
+            item.get("estimated_cost"),
+            f"{item.get('from_id')} -> {item.get('to_id')}",
+            "estimated_cost",
+            bad_numbers,
+        )
+        for item in segments
+    )
     budget = float(itinerary.get("budget_cny") or 0)
     if budget and estimated_cost > budget:
         warnings.append(
@@ -407,6 +501,30 @@ def evaluate_itinerary(itinerary: Dict[str, Any], now: Optional[datetime] = None
             )
         )
         suggestions.append("优先替换费用较高的交通或非必去活动")
+
+    for problem in bad_numbers:
+        if problem.negative:
+            # A negative duration or buffer makes an impossible transfer look
+            # achievable, so this has to block rather than warn.
+            hard_conflicts.append(
+                _issue(
+                    "NEGATIVE_VALUE",
+                    "HARD",
+                    f"{problem.where} 的 {problem.field} 为负（{problem.value}），"
+                    "已按 0 计算；负值会让排不通的行程显示为可行",
+                    details={"field": problem.field, "value": problem.value},
+                )
+            )
+        else:
+            hard_conflicts.append(
+                _issue(
+                    "UNREADABLE_NUMBER",
+                    "HARD",
+                    f"{problem.where} 的 {problem.field} 无法解析为数字"
+                    f"（{problem.value!r}）；请去掉货币符号与千分位后再记录",
+                    details={"field": problem.field, "value": str(problem.value)},
+                )
+            )
 
     if hard_conflicts:
         status = "INFEASIBLE"

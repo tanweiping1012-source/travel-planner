@@ -67,6 +67,18 @@ For Claude Code, add the stdio server to the `mcpServers` object in
 `<CHECKOUT_DIR>` is the path printed by the setup script. Confirm the result
 with `travel_planner.py doctor`, which detects the running client on its own.
 
+`doctor` distinguishes three registration outcomes, because they need
+different fixes:
+
+| Status | Meaning |
+|---|---|
+| `READY` | The entry exists and carries a `command` that could start |
+| `INCOMPLETE` | The entry exists but has no usable `command` — it cannot start, so restarting the client will not help |
+| `MISSING` | No entry for the server at all |
+
+`INCOMPLETE` is what a partially hand-written entry produces. Re-run the setup
+script and copy the `command` and `args` exactly as printed.
+
 ## Interpreting Results
 
 `query-tickets` reports seat availability the way 12306 does, mixing integers
