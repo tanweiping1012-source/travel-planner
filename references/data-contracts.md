@@ -148,6 +148,81 @@ web_search_fallback
 user_provided
 ```
 
+## Amap Place and Route
+
+Output of `search-places` and `amap-snapshot`:
+
+```json
+{
+  "locations": {
+    "destination": {
+      "name": "西湖",
+      "longitude": 120.14,
+      "latitude": 30.24,
+      "city": "杭州市",
+      "match": {
+        "confidence": "HIGH",
+        "name_in_address": true,
+        "level": "风景名胜",
+        "candidate_count": 1,
+        "matched_address": "浙江省杭州市西湖",
+        "reasons": []
+      }
+    }
+  },
+  "routes": [
+    {
+      "mode": "transit",
+      "origin": { "...": "a Location, as above" },
+      "destination": { "...": "a Location, as above" },
+      "duration_minutes": 28,
+      "distance_meters": 6200,
+      "transfer_count": 1,
+      "walking_distance_meters": 450,
+      "estimated_cost": null,
+      "source": null,
+      "metadata": {}
+    }
+  ],
+  "nearby_places": [
+    {
+      "name": "灵隐寺",
+      "location": { "...": "a Location, as above" },
+      "address": "杭州市西湖区法云弄1号",
+      "category": "风景名胜",
+      "rating": 4.6,
+      "source": {
+        "provider": "amap",
+        "checked_at": "2026-08-10T10:00:00+08:00",
+        "provider_id": null,
+        "url": null
+      }
+    }
+  ]
+}
+```
+
+`match` is present on a `Location` only when it went through `geocode()`, and
+is `null` when `resolve_location()` accepted a named POI instead — a venue
+may legitimately be small, so that branch carries no settlement-level check.
+This is exactly why `origin`/`destination` — a trip's two settlements, not
+venues — must be resolved with `resolve_location(..., expect_settlement=True)`
+rather than the default: a plain `resolve_location("东京")` once matched a
+Beijing restaurant of that name over the city, silently, because the
+POI-preference branch had no check to fail. `expect_settlement=True` skips
+that branch entirely and defers to `geocode(expect_settlement=True)`, which
+does refuse a `LOW`-confidence match (see the Coverage Gate in
+[`workflow.md`](workflow.md)) rather than returning one with
+`confidence: "LOW"`. `amap-snapshot` calls it this way for both endpoints, so
+a `Location` reaching a plan through it carries `HIGH` or `MEDIUM` unless the
+caller explicitly opted in with `allow_low_confidence=True`. A `match: null`
+field is therefore not evidence of a bad match on its own — it more often
+means the location is a venue, for which no such check applies.
+
+`Route.source` and `Route.estimated_cost` are commonly `null` — Amap's transit
+and driving directions do not always carry a fare, and this module never
+invents one to fill the gap.
+
 ## Rail Option
 
 ```json

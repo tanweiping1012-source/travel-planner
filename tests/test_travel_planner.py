@@ -118,6 +118,58 @@ class AmapClientTest(unittest.TestCase):
         self.assertEqual(location.name, "天安门广场")
         self.assertEqual(location.longitude, 116.397499)
 
+    def test_expect_settlement_bypasses_a_coincidental_venue_match(self):
+        """A restaurant named 东京 in Beijing must not stand in for Tokyo.
+
+        resolve_location's POI-preference branch has no settlement-level
+        check at all, so a keyword hit against an unrelated small venue used
+        to reach a plan with no refusal — the exact way a live search for
+        "东京" once resolved to a Beijing restaurant of that name. This is
+        what the Coverage Gate in workflow.md relies on being closed.
+        """
+
+        class Transport:
+            def __call__(self, path, params):
+                if path == "/v3/place/text":
+                    return {
+                        "status": "1",
+                        "pois": [
+                            {
+                                "id": "R1",
+                                "name": "东京",
+                                "location": "116.4,39.9",
+                                "cityname": "北京市",
+                                "address": "朝阳区某购物中心",
+                                "type": "餐饮服务",
+                                "biz_ext": {"rating": "4.5"},
+                            }
+                        ],
+                    }
+                if path == "/v3/geocode/geo":
+                    return {
+                        "status": "1",
+                        "geocodes": [
+                            {
+                                "formatted_address": "广西壮族自治区贵港市平南县东京",
+                                "location": "110.451480,23.202676",
+                                "city": "贵港市",
+                                "level": "村庄",
+                            }
+                        ],
+                    }
+                return {"status": "0", "info": "INVALID_PARAMS", "infocode": "10001"}
+
+        client = AmapClient("not-a-real-secret", transport=Transport())
+
+        # Default behaviour: a venue may legitimately be small, so the POI
+        # hit is accepted, exactly as it was before this fix.
+        venue = client.resolve_location("东京")
+        self.assertEqual(venue.city, "北京市")
+
+        # A settlement query must not accept that same coincidental hit.
+        with self.assertRaises(AmapError):
+            client.resolve_location("东京", expect_settlement=True)
+
     def test_provider_error_does_not_contain_key(self):
         with self.assertRaises(AmapError) as context:
             self.client.route(

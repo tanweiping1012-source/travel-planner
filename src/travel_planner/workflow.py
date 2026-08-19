@@ -17,8 +17,15 @@ def collect_amap_snapshot(request: Dict[str, Any], client: AmapClient) -> dict:
     origin_city = request.get("origin_city")
     destination_city = request.get("destination_city") or destination_text
 
-    origin = client.resolve_location(origin_text, city=origin_city)
-    destination = client.resolve_location(destination_text, city=destination_city)
+    # The trip's origin and destination are settlements, not venues, so a
+    # coincidentally-named restaurant or shop must not stand in for a city
+    # Amap does not actually cover. See resolve_location's docstring.
+    origin = client.resolve_location(
+        origin_text, city=origin_city, expect_settlement=True
+    )
+    destination = client.resolve_location(
+        destination_text, city=destination_city, expect_settlement=True
+    )
 
     route_modes = request.get("route_modes") or ["transit", "driving"]
     routes = []

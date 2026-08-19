@@ -153,6 +153,18 @@ OTA 不需要这么做——机票价格在 DOM 里，截图纯属浪费时间�
 判据在 `travel_planner.geomatch`，两条都只依赖响应本身：查询词是否出现在
 返回地址里，以及城市查询是否落到了村庄级别。
 
+**这个检查最初只挂在 `geocode()` 上，而真正在用的入口 `resolve_location()`
+完全绕过了它。** `resolve_location` 会优先尝试 `search_places()`——POI 搜索
+天生不做置信度检查（场所本来就可能很小），只有搜不到 POI 时才回退到
+`geocode()`。查「东京」时 `search_places` 命中了北京一家同名餐厅，直接
+返回，`geocode` 那层检查根本没被触发。`amap-snapshot`（Map 分支实际调用
+的命令）内部就是走 `resolve_location`，所以 v0.5.0 的修复对它形同虚设。
+
+修法：给 `resolve_location` 也加一个 `expect_settlement` 参数，为真时跳过
+POI 分支，直接走 `geocode(expect_settlement=True)`。`collect_amap_snapshot`
+解析行程的出发地和目的地时传 `True`——这两个是城市/地区，不是场所；解析
+具体景点时保持默认 `False`，因为场所允许很小。已用真实高德请求端到端验证。
+
 ### 时间处理集中在一处
 
 任何需要比较时刻的地方都走 `travel_planner.timeutil`：`parse_datetime`

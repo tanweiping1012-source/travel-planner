@@ -126,8 +126,27 @@ class AmapClient:
             match=assessment,
         )
 
-    def resolve_location(self, query: str, city: Optional[str] = None) -> Location:
-        """Prefer a named POI and fall back to address geocoding."""
+    def resolve_location(
+        self,
+        query: str,
+        city: Optional[str] = None,
+        *,
+        expect_settlement: bool = False,
+    ) -> Location:
+        """Prefer a named POI and fall back to address geocoding.
+
+        The POI-preference branch below is what let a search for the city
+        "东京" resolve to a Beijing restaurant coincidentally named 东京: a
+        keyword match against ``search_places`` requires no settlement-level
+        check at all, so it silently bypassed the Coverage Gate refusal that
+        ``geocode(expect_settlement=True)`` provides. A trip's origin and
+        destination are settlements, not venues, so ``expect_settlement=True``
+        skips this branch entirely and defers straight to ``geocode``, which
+        does the real check.
+        """
+
+        if expect_settlement:
+            return self.geocode(query, city=city, expect_settlement=True)
 
         places = self.search_places(query, city=city, limit=10)
         if places:

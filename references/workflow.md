@@ -102,6 +102,13 @@ back as a village in Guangxi and 捷里别尔卡 as one in Guizhou. Coordinates
 like these look exactly like verified facts and poison every distance and
 duration computed from them.
 
+This gate is a deliberate early check, not the only protection: `amap-snapshot`
+resolves the trip's own origin and destination the same protected way
+internally, so calling it directly does not bypass the refusal. Running this
+gate first still matters, because it decides overseas mode *before* spending a
+social-research phase or a route query on a destination that turns out to be
+uncovered.
+
 When the destination is outside coverage, the run continues in **overseas
 mode**:
 
