@@ -1,4 +1,4 @@
-# Travel Planner MVP
+# Travel Planner
 
 [![CI](https://github.com/tanweiping1012-source/travel-planner/actions/workflows/ci.yml/badge.svg)](https://github.com/tanweiping1012-source/travel-planner/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
